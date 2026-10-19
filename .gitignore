@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Java / Gradle (core/)
+core/build/
+core/.gradle/
+core/out/
+
+# Node / Nuxt (frontend/)
+frontend/node_modules/
+frontend/.nuxt/
+frontend/.output/
+frontend/dist/
+
+# Local secrets and env
+.env
+.env.*
+*.local
+
+# Logs
+*.log
