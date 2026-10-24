@@ -404,7 +404,7 @@ MOA/
 ├─ core/         Spring Boot — MOA Core 서비스 (Phase 1)
 │   └─ src/main/java/moa/
 │       ├─ store/      ┐
-│       ├─ sales/      │ 모듈 = PostgreSQL 스키마 1개
+│       ├─ sales/      │ 모듈 = MySQL 데이터베이스(스키마) 1개
 │       ├─ expense/    │ 모듈 루트 = 공개 API·이벤트
 │       ├─ category/   │ internal/ = 애그리거트·리포지토리·컨트롤러
 │       ├─ budget/     │

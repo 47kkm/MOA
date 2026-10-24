@@ -419,7 +419,7 @@ void on(ExpenseRegistered e) {
 | 기능 | 우선 | 수용 조건 |
 |---|---|---|
 | 기본 분류 생성 | 필수 | Given StoreRegistered(업종 카페) 수신 / When 처리 / Then 5.2의 기본 분류 tree가 생성됨. 예: 식자재 > 원두 / 유제품 / 베이커리 / 기타 식자재, 인건비 > 급여 / 주휴·수당, 임대료, 공과금 > 전기 / 수도·가스 / 통신 … |
-| | | Given 업종 기타 / When 처리 / Then 상위 "기타" 하나만 생성 |
+| | | Given 업종 음식점·소매·기타 / When 처리 / Then Phase 1은 카페 템플릿과 같은 tree (2026-10-19 기획서 P1-3. 업종별 템플릿은 Phase 2) |
 | 분류 추가 | 필수 | Given 상위 "식자재" 있음 / When 하위 "시럽" 추가 / Then 경로 "식자재 > 시럽"으로 생성, CategoryAdded 발행 |
 | | | Given 하위 "유제품" 있음 / When 그 아래 추가 / Then 거부 (2단계 초과) |
 | | | Given "식자재" 아래 "원두" 있음 / When 같은 이름 "원두" 추가 / Then 거부 (형제 간 이름 중복. 비활성 분류와도 중복 불가) |
