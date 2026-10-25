@@ -95,7 +95,13 @@ moa/category/                      ← 모듈 루트. 여기 있는 것만 다�
 | 공개 API 조회 | 상대 모듈 루트의 `XxxService` 빈을 주입받아 메서드 호출. 돌려받는 건 엔티티가 아니라 읽기 전용 레코드 | expense가 `categoryService.isActive(storeId, categoryId)` |
 | 이벤트 | 내는 쪽: `ApplicationEventPublisher.publishEvent(레코드)`. 받는 쪽: `@ApplicationModuleListener` 메서드 | store가 `StoreRegistered`를 내고 category가 받아 템플릿 생성 |
 
-**이벤트의 동작 방식.** `@ApplicationModuleListener`는 Spring Modulith가 주는 어노테이션으로, 세 가지가 묶여 있다. ① 내는 쪽 트랜잭션이 **커밋된 뒤에** 실행된다 (매장이 저장되지 않았는데 분류가 만들어지는 일이 없음). ② **비동기**로, 별도 스레드에서 실행된다 (매장 등록 응답이 분류 생성을 기다리지 않음). ③ 받는 쪽은 **자기 트랜잭션**을 연다. 그리고 Modulith가 `moa.event_publication` 테이블에 "누가 아직 처리 안 했는지"를 적어 두어, 처리 중 애플리케이션이 죽어도 다시 뜰 때 재실행할 수 있다. Phase 1에서는 재실행 설정을 켜 두는 것까지만 하고 운영 감시는 하지 않는다.
+**이벤트의 동작 방식 (2026-10-25 수정: 비동기 → 동기).** Phase 1의 리스너는 `@TransactionalEventListener` + `@Transactional(propagation = REQUIRES_NEW)` 조합으로 만든다. 세 가지 뜻이다. ① 내는 쪽 트랜잭션이 **커밋된 뒤에** 실행된다 (매장이 저장되지 않았는데 분류가 만들어지는 일이 없음). ② **같은 스레드에서 동기로** 실행되어 HTTP 응답이 나가기 전에 끝난다 (매장 등록 응답을 받은 프론트가 바로 분류·결제수단을 조회해도 이미 있음. 비용 저장 응답 시점에 예산 소진도 이미 갱신되어 있음). ③ 받는 쪽은 **자기 트랜잭션**을 연다 (분류 생성이 실패해도 매장 저장은 되돌아가지 않음). 그리고 Spring Modulith가 `moa.event_publication` 테이블에 "누가 아직 처리 안 했는지"를 적어 두어, 리스너가 실패하거나 처리 중 애플리케이션이 죽어도 다시 뜰 때 재실행할 수 있다. Phase 1에서는 재실행 설정을 켜 두는 것까지만 하고 운영 감시는 하지 않는다.
+
+**리스너가 실패하면.** 커밋 뒤 단계에서 던진 예외는 내는 쪽(호출자)으로 전파되지 않고 로그로만 남는다. 그래서 템플릿 생성이 실패해도 매장 등록 응답은 성공(201)이고, 분류는 없는 상태가 된다. 발행 기록은 "미완료"로 남아 있다가 애플리케이션이 다시 뜰 때 재실행된다. Phase 1은 이 동작으로 충분하다고 보고(사용자 1명, DB 장애 같은 드문 경우), 실패를 사용자에게 알리는 흐름은 두지 않는다. 발행 기록은 `@ApplicationModuleListener`만이 아니라 `@TransactionalEventListener`가 붙은 리스너 전부를 대상으로 한다.
+
+이 문단의 세 주장(① 예외가 호출자로 안 감 ② 발행 기록에 미완료로 남음 ③ 재발행하면 처리됨)은 프레임워크 동작이므로 믿지 않고 **뼈대 작업의 첫 테스트로 확인**한다 (0.7 "프레임워크 확인"). 다르게 동작하면 이 문단과 D0-3을 고친다.
+
+Spring Modulith의 `@ApplicationModuleListener`는 위 조합에 **비동기**(`@Async`)를 더한 것이다. Phase 1에서 쓰지 않는 이유는 사용자 1명 규모에서 비동기의 이득(응답이 빨라짐)이 없고, 대신 "응답 직후 데이터가 아직 없음" 경합과 테스트 대기 장치가 생기기 때문이다. Phase 2에서 AI 서비스처럼 오래 걸리는 수신자가 생기면 그 리스너만 비동기로 바꾼다. 어노테이션 하나 차이다.
 
 이벤트는 Java 레코드로 만들고, 상대 모듈이 알아야 할 **ID와 값만** 담는다. 엔티티를 담지 않는다.
 
@@ -112,7 +118,7 @@ public interface CategoryUsage {
 class CategoryUsageImpl implements CategoryUsage { ... expense 테이블을 센다 ... }
 ```
 
-컴파일 의존은 expense → category 한 방향뿐이다. category는 자기 인터페이스만 알고, 실행 시 Spring이 expense의 구현체를 꽂아 준다. expense 모듈이 아직 없는 2주차에는 category 테스트와 임시 설정에서 "항상 0건"을 돌려주는 구현을 쓴다.
+컴파일 의존은 expense → category 한 방향뿐이다. category는 자기 인터페이스만 알고, 실행 시 Spring이 expense의 구현체를 꽂아 준다. expense 모듈이 아직 없는 2주차에는 main에 "항상 0건"을 돌려주는 임시 구현(`NoExpenseYet`)을 둔다. 2주차에는 비용 데이터가 실제로 0건이라 이 값은 사실과 맞고, 애플리케이션이 뜨려면 구현체가 하나 있어야 한다. 테스트에서는 이것을 쓰지 않고 **건수를 지정할 수 있는 가짜**(`FakeCategoryUsage`, 테스트 소스)를 쓴다. 그래야 "사용된 분류는 삭제 거부" 테스트가 2주차에 성립한다. 3주차 expense 구현의 완료 조건에 "`NoExpenseYet` 삭제"를 넣는다.
 
 ### 0.4 데이터베이스
 
@@ -154,6 +160,7 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 | 입력 형식 위반 (빈 이름, 길이 초과, 음수) | 400 | `VALIDATION` + 항목명 |
 | 규칙 위반 (중복, 상한, 마지막 하나, 사용 중 삭제) | 409 | 모듈별 코드. 각 장의 HTTP 절에 목록 |
 | 없는 ID | 404 | `NOT_FOUND` |
+| 없는 매장 (`/api/stores/{storeId}/**`의 접근 검사, 1.4) | 404 | `STORE_NOT_FOUND`. `NOT_FOUND`와 일부러 구분한다. 프론트는 이 코드를 받으면 매장 등록 화면으로 보낸다 (기획서 1장 "매장이 없으면 어느 주소로 들어와도 등록 화면") |
 | 그 외 | 500 | 로그에 스택, 응답에는 코드만 |
 
 ### 0.7 테스트 전략
@@ -161,9 +168,10 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 | 층 | 무엇을 | 도구 | 속도 |
 |---|---|---|---|
 | 도메인 단위 | 애그리거트 메서드의 규칙 | JUnit 5 + AssertJ. DB 없음, Spring 없음 | ms |
-| 모듈 | 응용 서비스 한 기능 = 요청 하나. 저장·조회·이벤트 발행까지 | `@ApplicationModuleTest` + Testcontainers MySQL. 다른 모듈은 뜨지 않고, 필요한 상대 인터페이스는 가짜로 | 초 |
+| 모듈 | 응용 서비스 한 기능 = 요청 하나. 저장·조회·이벤트 발행·리스너 처리까지 | `@ApplicationModuleTest` + Testcontainers MySQL. 다른 모듈은 뜨지 않고, 필요한 상대 인터페이스는 테스트 소스의 가짜로 (예: `FakeCategoryUsage`는 분류 ID별 건수를 지정). 리스너가 동기라 대기 장치(Awaitility) 불필요 | 초 |
 | 경계 | 모듈 간 import·순환 | `ApplicationModules.of(MoaApplication.class).verify()` 하나 | 초 |
-| HTTP | 컨트롤러의 JSON 변환과 상태 코드 | `@WebMvcTest`, 서비스는 Mock. 기능당 정상 1개 + 오류 1개만 | ms |
+| HTTP | 컨트롤러의 JSON 변환과 상태 코드 | `@WebMvcTest`, 서비스는 Mock. 기능당 정상 1개 + 오류 1개만. 매장 접근 검사는 테스트 소스의 가짜 컨트롤러(`/api/stores/{storeId}/ping`)와 인터셉터 등록 설정을 `@Import`한 슬라이스에서 | ms |
+| 프레임워크 확인 | 0.3의 리스너 동작 세 가지 (예외 비전파, 미완료 기록, 재발행) | 뼈대 작업 첫 테스트. 일부러 실패하는 리스너를 테스트 소스에 두고 확인. 기능 테스트가 아니라 설계 전제의 확인 | 초 |
 
 - 테스트 이름은 `@DisplayName("기능 이름 - 상황")`. 기획서 검증 기준의 "기능 | 상황" 두 칸과 같게 쓴다. 검증 기준 중 화면만의 것(버튼 비활성, 토스트, 포커스)은 백엔드 테스트가 없고 프론트 테스트(Vitest)로 간다.
 - TDD 순서: 검증 기준 한 줄 → 테스트 이름 쓰고 실패 확인(빨강) → 통과하는 최소 코드(초록) → 정리. 기능 하나가 끝나면 커밋 하나.
@@ -182,7 +190,7 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 |---|---|---|---|
 | D0-1 | 공개 API의 형태 | Java 인터페이스가 아니라 **공개 클래스 `XxxService`** 하나. 다른 모듈은 이 빈을 주입받아 호출 | 인터페이스+구현 분리는 구현이 둘 이상일 때 가치가 있음. Phase 1에는 없음. 역전이 필요한 곳(0.3)만 인터페이스 |
 | D0-2 | 트랜잭션 하나에 애그리거트 여러 개 | 같은 모듈 안에서는 허용 (상위 끄면 하위도, 템플릿 생성) | 사용자 1명·토이 규모에서 이벤트로 쪼개면 복잡함만 늚. 모듈을 넘는 변경은 예외 없이 이벤트 |
-| D0-3 | 이벤트 리스너 방식 | `@ApplicationModuleListener` (커밋 후·비동기·별도 트랜잭션), 재발행 켬 | 모듈러 모놀리스에서 Phase 2 물리 분리와 같은 모양을 미리 갖춤 |
+| D0-3 | 이벤트 리스너 방식 | **변경 (2026-10-25)** `@TransactionalEventListener` + `REQUIRES_NEW` (커밋 후·**동기**·별도 트랜잭션), 재발행 켬. 이전: `@ApplicationModuleListener`(비동기) | Muse 리뷰. 비동기는 등록 직후 조회 경합과 테스트 대기 장치를 만들고 사용자 1명 규모에서 이득이 없음. 커밋 후·별도 트랜잭션이라 모듈 독립성은 그대로. Phase 2에서 오래 걸리는 수신자만 비동기로 |
 | D0-4 | 공통 스키마 `moa` | Flyway 이력표와 Modulith 발행표를 둠 | 프레임워크 테이블이 특정 모듈 스키마에 섞이지 않게 |
 | D0-5 | 오류 응답 | `code` 중심. 문구는 프론트 | 서버가 문구를 가지면 기획서 문구 변경 때 배포가 필요 |
 | D0-6 | 현재 시각 | `Clock` 빈 하나 | 테스트에서 "오늘"을 고정하려면 주입 가능해야 함 |
@@ -200,7 +208,7 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 | 받는 이벤트 | 없음 |
 | 내는 이벤트 | `StoreRegistered` |
 | 다른 모듈 호출 | 없음 |
-| 다른 모듈이 이 모듈을 | category·sales가 `StoreRegistered`를 받음. Phase 1에서 공개 API를 호출하는 모듈은 없음 |
+| 다른 모듈이 이 모듈을 | category·sales가 `StoreRegistered`를 받음. 다른 모듈은 store의 공개 API를 호출하지 않는다. 대신 `/api/stores/{storeId}/**` 요청은 전부 store 모듈의 접근 검사(1.4)를 먼저 지난다 |
 | 스키마 | `store` |
 
 ### 1.2 애그리거트: Store
@@ -235,6 +243,8 @@ setter 없음. `registeredAt`을 바꾸는 메서드 없음. 등록 제한(Phase
 | `findAll()` | — | `List<StoreInfo>` | 읽기. Phase 1에서 프론트가 "매장이 있는가"를 판단하는 데 씀 (0개 또는 1개) |
 
 `StoreInfo(id, name, type, registeredAt)` 레코드.
+
+**매장 접근 검사 (2026-10-25 추가).** 다른 모듈의 HTTP 경로는 모두 `/api/stores/{storeId}/...` 모양이다. store 모듈의 `StoreAccessInterceptor`(Spring MVC 인터셉터)가 이 경로를 가로채 `storeId`의 매장이 있는지 확인하고, 없으면 404 `STORE_NOT_FOUND`로 끊는다. 그래서 category·sales 등은 `storeId`를 검증하지 않고 "검사를 지나온 값"으로 믿는다. 모듈마다 store를 호출하지 않으므로 의존이 늘지 않고, 없는 매장으로 데이터가 생기거나 "매장 없음"과 "분류 없음"이 섞이는 일이 없다. Phase 2 로그인 때 "이 매장이 로그인한 계정 것인가" 검사가 들어갈 자리가 바로 여기다. 이벤트로 들어오는 `storeId`는 store가 직접 낸 값이라 검사하지 않는다.
 
 ### 1.5 이벤트
 
@@ -277,7 +287,8 @@ moa/store/
 └─ internal/
     ├─ Store.java           애그리거트
     ├─ StoreRepository.java Spring Data
-    └─ StoreController.java
+    ├─ StoreController.java
+    └─ StoreAccessInterceptor.java  /api/stores/{storeId}/** 매장 존재 검사 (Phase 2 로그인 검사 자리)
 ```
 
 ### 1.9 테스트 목록
@@ -300,6 +311,8 @@ moa/store/
 | 모듈 | 매장 정보 수정 - 변경 후 조회에 반영 |
 | HTTP | 매장 등록 - 201과 본문 |
 | HTTP | 매장 등록 - 빈 이름 → 400 VALIDATION |
+| HTTP | 매장 접근 검사 - 없는 storeId 하위 경로(가짜 컨트롤러) → 404 STORE_NOT_FOUND |
+| HTTP | 매장 접근 검사 - 있는 storeId → 통과 |
 
 ### 1.10 결정 사항
 
@@ -309,6 +322,7 @@ moa/store/
 | D1-2 | 등록일 | 서버의 Asia/Seoul 날짜 (`Clock`) | 클라이언트 시계를 믿지 않음 |
 | D1-3 | 수정 API | 이름·업종을 한 번에 PUT | 항목이 둘뿐. 나눌 이유 없음 |
 | D1-4 | 업종 변경 이벤트 | 내지 않음 | 받는 모듈이 없음. 필요해지면 그때 추가 |
+| D1-5 | storeId 검증 | **2026-10-25 추가** store 모듈의 웹 인터셉터 한 곳에서. 다른 모듈은 검증하지 않음 | Muse 리뷰("없는 storeId로 고아 데이터"). 모듈마다 `exists()`를 부르면 모든 모듈이 store에 의존하게 됨. 접근 검사는 Phase 2 로그인 검사와 같은 자리라 한 곳이 맞음 |
 
 ---
 
@@ -384,7 +398,11 @@ moa/store/
 기타
 ```
 
-`StoreRegisteredListener`가 받아서 상위 7개와 하위 9개를 한 트랜잭션에 저장하고 `DefaultCategoriesCreated(storeId, 개수)`를 낸다. 같은 `storeId`로 이미 분류가 있으면 아무것도 하지 않는다 (이벤트 재발행에 대비한 멱등 처리).
+`StoreRegisteredListener`가 받아서 상위 7개와 하위 9개를 한 트랜잭션에 저장하고 `DefaultCategoriesCreated(storeId, 개수)`를 낸다.
+
+**두 번 받아도 한 번만 (멱등, 2026-10-25 수정).** 이벤트는 재발행될 수 있다 (0.3). 그래서 템플릿을 적용하면 같은 트랜잭션에서 `category.template_applications`에 `store_id` 한 줄을 남긴다. 리스너는 먼저 이 기록을 보고, 있으면 아무것도 하지 않는다. `store_id`가 PK라서 두 번의 처리가 동시에 들어와도 두 번째는 저장 단계에서 실패하고 통째로 되돌아간다. 이전 안("그 매장에 분류가 하나라도 있으면 무시")은 템플릿 생성이 실패한 뒤 사용자가 분류를 직접 추가하면 재실행 때 템플릿이 영영 안 생기는 문제가 있어 바꿨다. 이 기록은 애그리거트가 아니라 리스너의 처리 기록이라 엔티티 하나로 간단히 둔다.
+
+**이미 있는 이름은 합친다 (2026-10-25 추가).** 템플릿이 실패한 뒤 사용자가 분류를 먼저 만들었다가 재실행되는 경우, 템플릿 노드를 그대로 넣으면 형제 이름 중복(2.3)이 생긴다. 상위 분류는 DB 유니크로도 못 막는다(2.8). 그래서 리스너는 노드마다 형제 이름을 먼저 확인한다. 같은 이름의 상위가 있으면 새로 만들지 않고 그것을 상위로 써서 그 아래에 템플릿 하위를 넣고, 같은 이름의 하위가 있으면 건너뛴다. 꺼져 있는 같은 이름도 "있음"으로 본다. 합칠 상위가 꺼져 있으면 그 아래 넣는 템플릿 하위도 **꺼진 상태**로 만든다 ("상위가 꺼져 있으면 하위도 꺼짐"이라는 2.3의 규칙을 리스너도 지킴). 개수 상한(20)에 걸리면 그 노드부터 건너뛴다.
 
 ### 2.5 공개 API: CategoryService
 
@@ -403,7 +421,7 @@ moa/store/
 
 `CategoryInfo(id, parentId, name, path, active, sortOrder, expenseCount)` 레코드. `path`는 "식자재 > 유제품", 상위는 이름만. `expenseCount`는 `tree`에서만 채우고 `infoOf`에서는 0.
 
-모든 메서드가 `storeId`를 받는다. Phase 1은 매장이 하나지만 Phase 2 로그인 때 "내 매장만"으로 바뀌는 자리를 미리 잡아 둔다 (요구사항정의서 9장 규칙).
+모든 메서드가 `storeId`를 받는다. Phase 1은 매장이 하나지만 Phase 2 로그인 때 "내 매장만"으로 바뀌는 자리를 미리 잡아 둔다 (요구사항정의서 9장 규칙). `storeId`의 매장이 실제로 있는지는 이 서비스가 확인하지 않는다. HTTP로 들어온 값은 store 모듈의 접근 검사(1.4)를 지났고, 이벤트로 들어온 값은 store가 낸 값이다.
 
 ### 2.6 이벤트
 
@@ -449,6 +467,11 @@ CREATE TABLE category.categories (
   INDEX idx_categories_store_parent (store_id, parent_id),
   UNIQUE KEY uk_categories_sibling_name (store_id, parent_id, name)
 ) CHARACTER SET utf8mb4;
+
+CREATE TABLE category.template_applications (   -- 기본 분류 템플릿 적용 기록 (멱등 처리, 2.4)
+  store_id    BIGINT       PRIMARY KEY,
+  applied_at  DATETIME     NOT NULL
+);
 ```
 
 유니크 키는 하위 분류의 중복만 DB가 막아 준다. MySQL은 `parent_id`가 NULL인 행끼리는 유니크를 비교하지 않으므로 상위 분류의 중복은 코드(2.3)만 막는다. 사용자 1명이라 충분하다.
@@ -479,7 +502,11 @@ moa/category/
     ├─ CategoryController.java
     ├─ CategoryTemplate.java
     ├─ StoreRegisteredListener.java
-    └─ NoExpenseYet.java        CategoryUsage 임시 구현 (항상 0). 3주차 expense 구현 때 삭제
+    ├─ TemplateApplication.java 템플릿 적용 기록 (멱등)
+    └─ NoExpenseYet.java        CategoryUsage 임시 구현 (항상 0, 2주차엔 사실). **3주차 expense 완료 조건: 삭제**
+
+test/.../category/
+    └─ FakeCategoryUsage.java   분류 ID별 건수를 지정하는 가짜 ("사용된 분류 삭제 거부" 테스트용)
 ```
 
 ### 2.11 테스트 목록
@@ -500,7 +527,10 @@ moa/category/
 | 도메인 | 분류 이동 - 상위를 옮기려 함 → 거부 |
 | 모듈 | 기본 분류 생성 - StoreRegistered 수신 → 상위 7, 하위 9 생성, DefaultCategoriesCreated 발행 |
 | 모듈 | 기본 분류 생성 - 다른 업종 → 같은 템플릿 |
-| 모듈 | 기본 분류 생성 - 두 번 수신 → 두 번째는 무시 |
+| 모듈 | 기본 분류 생성 - 두 번 수신 → 두 번째는 무시 (적용 기록 있음) |
+| 모듈 | 기본 분류 생성 - 사용자가 분류를 먼저 추가했어도 적용 기록이 없으면 템플릿 생성 |
+| 모듈 | 기본 분류 생성 - 사용자가 "식자재"를 먼저 만들었으면 새로 만들지 않고 그 아래에 템플릿 하위를 넣음 (중복 없음) |
+| 모듈 | 기본 분류 생성 - 합칠 "식자재"가 꺼져 있으면 넣는 하위도 꺼진 상태 |
 | 모듈 | 분류 추가 - 상위 추가 → tree 끝에, CategoryAdded 발행 |
 | 모듈 | 분류 추가 - 하위 추가 → 그 상위 아래 끝에, 경로 "식자재 > 시럽" |
 | 모듈 | 분류 추가 - 형제 중복 → CATEGORY_NAME_DUPLICATE |
@@ -544,6 +574,9 @@ moa/category/
 | D2-5 | `storeId`를 모든 API에 | 받음 | Phase 2 로그인에서 범위가 바뀌는 자리를 미리 둠 |
 | D2-6 | 활성화·삭제 이벤트 | 내지 않음 | 요구사항정의서 목록에 없고 수신자도 없음 |
 | D2-7 | 하위 끄기의 트랜잭션 | 상위와 하위를 한 트랜잭션에서 | D0-2 |
+| D2-8 | 템플릿 멱등 처리 | **변경 (2026-10-25)** 적용 기록 테이블(`store_id` PK). 이전: "분류가 하나라도 있으면 무시" | Muse 리뷰. 이전 조건은 실패 후 수동 추가 시 템플릿 누락, 동시 재실행 중복을 못 막음 |
+| D2-9 | 비용 건수 임시 구현 | main에 `NoExpenseYet`(2주차엔 사실과 같음), 테스트는 `FakeCategoryUsage`. 3주차 완료 조건에 삭제 | Muse 리뷰. 테스트 가짜가 없으면 "사용 중 삭제 거부" 테스트가 2주차에 성립하지 않음 |
+| D2-10 | 템플릿과 사용자 분류의 이름 충돌 | **2026-10-25 추가** 리스너가 형제 이름을 확인해 같은 상위는 합치고 같은 하위는 건너뜀. 꺼진 상위에 합치면 하위도 꺼진 상태로 | Muse 리뷰. 리스너가 2.3 규칙을 우회하면 상위 중복이 생기고 DB가 못 막음 |
 
 ---
 
