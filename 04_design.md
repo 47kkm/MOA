@@ -93,7 +93,7 @@ moa/category/                      ← 모듈 루트. 여기 있는 것만 다�
 |---|---|---|
 | ID 참조 | 애그리거트에 `Long xxxId` 필드. JPA 연관관계 어노테이션 없음 | `Expense.categoryId`, 모든 애그리거트의 `storeId` |
 | 공개 API 조회 | 상대 모듈 루트의 `XxxService` 빈을 주입받아 메서드 호출. 돌려받는 건 엔티티가 아니라 읽기 전용 레코드 | expense가 `categoryService.isActive(storeId, categoryId)` |
-| 이벤트 | 내는 쪽: `ApplicationEventPublisher.publishEvent(레코드)`. 받는 쪽: `@ApplicationModuleListener` 메서드 | store가 `StoreRegistered`를 내고 category가 받아 템플릿 생성 |
+| 이벤트 | 내는 쪽: `ApplicationEventPublisher.publishEvent(레코드)`. 받는 쪽: `@TransactionalEventListener` + `@Transactional(propagation = REQUIRES_NEW)` 메서드 (커밋 후·동기, 아래 문단과 D0-3) | store가 `StoreRegistered`를 내고 category가 받아 템플릿 생성 |
 
 **이벤트의 동작 방식 (2026-10-25 수정: 비동기 → 동기).** Phase 1의 리스너는 `@TransactionalEventListener` + `@Transactional(propagation = REQUIRES_NEW)` 조합으로 만든다. 세 가지 뜻이다. ① 내는 쪽 트랜잭션이 **커밋된 뒤에** 실행된다 (매장이 저장되지 않았는데 분류가 만들어지는 일이 없음). ② **같은 스레드에서 동기로** 실행되어 HTTP 응답이 나가기 전에 끝난다 (매장 등록 응답을 받은 프론트가 바로 분류·결제수단을 조회해도 이미 있음. 비용 저장 응답 시점에 예산 소진도 이미 갱신되어 있음). ③ 받는 쪽은 **자기 트랜잭션**을 연다 (분류 생성이 실패해도 매장 저장은 되돌아가지 않음). 그리고 Spring Modulith가 `moa.event_publication` 테이블에 "누가 아직 처리 안 했는지"를 적어 두어, 리스너가 실패하거나 처리 중 애플리케이션이 죽어도 다시 뜰 때 재실행할 수 있다. Phase 1에서는 재실행 설정을 켜 두는 것까지만 하고 운영 감시는 하지 않는다.
 
