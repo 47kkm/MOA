@@ -1,0 +1,19 @@
+# 로컬 개발용 MySQL 하나. 실행: docker compose up -d
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: moa-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: moa
+      TZ: Asia/Seoul
+    ports:
+      - "3306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+09:00
+    volumes:
+      - moa-mysql-data:/var/lib/mysql
+
+volumes:
+  moa-mysql-data:

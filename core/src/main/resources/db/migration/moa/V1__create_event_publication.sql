@@ -1,0 +1,13 @@
+-- Spring Modulith 이벤트 발행 기록 (04 설계 0.3, D0-4)
+-- spring-modulith-events-jdbc 1.4.14의 schema-mysql.sql 그대로. 프레임워크가 대문자 이름으로 조회하므로 이름 규칙(소문자 복수형)의 예외
+CREATE TABLE moa.EVENT_PUBLICATION
+(
+  ID               VARCHAR(36)   NOT NULL,
+  LISTENER_ID      VARCHAR(512)  NOT NULL,
+  EVENT_TYPE       VARCHAR(512)  NOT NULL,
+  SERIALIZED_EVENT VARCHAR(4000) NOT NULL,
+  PUBLICATION_DATE TIMESTAMP(6)  NOT NULL,
+  COMPLETION_DATE  TIMESTAMP(6)  DEFAULT NULL NULL,
+  PRIMARY KEY (ID),
+  INDEX EVENT_PUBLICATION_BY_COMPLETION_DATE_IDX (COMPLETION_DATE)
+);
