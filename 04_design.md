@@ -116,14 +116,18 @@ core/
 └─ src/
    ├─ main/java/moa/
    │   ├─ MoaApplication.java        main(). 여기서 Spring이 시작됨
+   │   ├─ ClockConfig.java           "오늘"을 만드는 Clock 빈 (D0-6)
    │   ├─ shared/                    공통 값 객체 (Money)
    │   ├─ store/                     모듈. 아래 0.2 규칙
    │   ├─ category/
    │   ├─ sales/  expense/  budget/  report/
    ├─ main/resources/
    │   ├─ application.yml            DB 주소, 타임존, Flyway 설정
-   │   └─ db/migration/<모듈>/       테이블 생성 SQL (V1__xxx.sql …)
+   │   └─ db/migration/<모듈>/       테이블 생성 SQL (V<번호>__xxx.sql. 번호는 폴더와 상관없이 전체에서 하나씩, 0.4)
    └─ test/java/moa/                 테스트. main과 같은 패키지 구조
+       ├─ ModularityTest.java        모듈 경계 (0.2)
+       ├─ DatabaseSetupTest.java     스키마 7개 생성 확인
+       └─ frameworkcheck/            리스너 동작 확인 (0.3)
 ```
 
 **뜨는 순서**
@@ -220,7 +224,8 @@ store: 매장 저장
 
 - Phase 1은 이대로 받아들인다. 사용자에게 알리는 흐름은 없다 (**2026-10-27 확정.** 사용자 1명, DB 장애 수준의 드문 경우)
 - 발행 기록은 `@ApplicationModuleListener`만이 아니라 `@TransactionalEventListener`가 붙은 리스너 전부가 대상
-- 위 세 가지(① 예외가 호출자로 안 감 ② 미완료로 기록 ③ 재발행하면 처리됨)는 프레임워크 동작이라 믿지 않고 **뼈대 첫 테스트로 확인**한다 (0.7 "프레임워크 확인"). 다르게 동작하면 이 절과 D0-3을 고친다
+- 위 세 가지(① 예외가 호출자로 안 감 ② 미완료로 기록 ③ 재발행하면 처리됨)와 동기 실행은 **2026-10-27 뼈대 테스트로 확인했다** (`ListenerBehaviorTest` 4건 통과, 0.7)
+- 예외는 Modulith가 잡아 INFO 로그로 남긴다. 같은 스레드(요청 스레드)에서 실행되는 것도 로그로 확인
 
 **`@ApplicationModuleListener`를 쓰지 않는 이유**
 
@@ -281,9 +286,9 @@ storeRepository.save(store)     ← MOA 코드는 여기까지만 안다
 |---|---|
 | 서버 | MySQL 8 하나 (Docker Compose). 테스트는 Testcontainers가 같은 이미지로 띄움 |
 | 스키마 | 모듈별 6개 `store, category, sales, expense, budget, report` + 공통 1개 `moa` (Flyway 이력표, Modulith `event_publication`) |
-| 연결 | DataSource 하나. JDBC URL에 기본 DB를 두지 않고, 엔티티에 `@Table(name = "categories", schema = "category")`처럼 스키마를 명시 |
-| Flyway | 인스턴스 하나가 스키마 7개를 만들고 관리. SQL 파일은 `db/migration/<모듈>/V1__create_xxx.sql`. 파일 안에서 `category.categories`처럼 스키마를 붙여 씀 |
-| 이름 규칙 | 테이블은 복수형 snake_case, 컬럼은 snake_case. 모든 테이블에 `id BIGINT AUTO_INCREMENT`, `created_at DATETIME`, `updated_at DATETIME` |
+| 연결 | DataSource 하나. JDBC URL의 기본 DB는 공통 스키마 `moa`. 모듈 엔티티는 `@Table(name = "categories", schema = "category")`처럼 스키마를 명시. → 왜 `moa`: Modulith 발행 기록은 MySQL에서 스키마 지정을 지원하지 않아 기본 DB에 있어야 함 (2026-10-27 뼈대에서 확인. 이전: 기본 DB 없음) |
+| Flyway | 인스턴스 하나가 스키마 7개를 만들고 관리 (이력표는 `moa`). SQL 파일은 `db/migration/<모듈>/V<번호>__create_xxx.sql`. **번호는 폴더와 상관없이 전체에서 하나씩 증가** (V1 = moa 발행 기록, V2부터 store·category …). 인스턴스가 하나라 두 폴더에 같은 번호가 있으면 앱이 뜨지 않음 (2026-10-27 정정). 파일 안에서 `category.categories`처럼 스키마를 붙여 씀 |
+| 이름 규칙 | 테이블은 복수형 snake_case, 컬럼은 snake_case. 모든 테이블에 `id BIGINT AUTO_INCREMENT`, `created_at DATETIME`, `updated_at DATETIME`. 예외: Modulith의 `moa.EVENT_PUBLICATION`은 프레임워크가 정한 대문자 이름 그대로 |
 | 금액 | `DECIMAL(15,0)`. 날짜는 `DATE`. 문자열은 `VARCHAR` + `utf8mb4` |
 | 모듈 간 참조 | `store_id`, `category_id` 같은 컬럼만. FK 제약 없음. JOIN 없음 |
 | 타임존 | 서버·JDBC 모두 `Asia/Seoul`. "오늘"은 `LocalDate.now(ZoneId.of("Asia/Seoul"))` 한 군데(`Clock` 빈)에서만 만든다 |
@@ -369,7 +374,7 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 | 통합 (모듈 하나) | 응용 서비스 한 기능 = 요청 하나. 저장·조회·이벤트 발행·리스너 처리까지 | `@ApplicationModuleTest` + Testcontainers MySQL. 다른 모듈은 뜨지 않고, 필요한 상대 인터페이스는 테스트 소스의 가짜로 (예: `FakeCategoryUsage`는 분류 ID별 건수를 지정). 리스너가 동기라 대기 장치(Awaitility) 불필요 | 초 |
 | 경계 | 모듈 간 import·순환 | `ApplicationModules.of(MoaApplication.class).verify()` 하나 | 초 |
 | HTTP | 컨트롤러의 JSON 변환과 상태 코드 | `@WebMvcTest`, 서비스는 Mock. 기능당 정상 1개 + 오류 1개만. 매장 접근 검사는 테스트 소스의 가짜 컨트롤러(`/api/stores/{storeId}/ping`)와 인터셉터 등록 설정을 `@Import`한 슬라이스에서 | ms |
-| 프레임워크 확인 | 0.3의 리스너 동작 세 가지 (예외 비전파, 미완료 기록, 재발행) | 뼈대 작업 첫 테스트. 일부러 실패하는 리스너를 테스트 소스에 두고 확인. 기능 테스트가 아니라 설계 전제의 확인 | 초 |
+| 프레임워크 확인 | 0.3의 리스너 동작 (동기 실행, 예외 비전파, 미완료 기록, 재발행) | `frameworkcheck/ListenerBehaviorTest`. 일부러 실패하는 리스너를 테스트 소스에 두고 확인. 기능 테스트가 아니라 설계 전제의 확인 (2026-10-27 4건 통과) | 초 |
 
 **TDD 순서**
 
@@ -393,7 +398,7 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 
 ### 0.9 결정 사항 [참고]
 
-D0-3은 2026-10-29에 사용자가 리스너 확인 테스트 결과와 함께 확인한다 (muse-feedback 결정 3).
+D0-3의 리스너 확인 테스트는 2026-10-27 통과했다 (0.3). 사용자 확인은 2026-10-29 검토 2부에서 (muse-feedback 결정 3).
 
 | # | 결정 | 결론 | 이유 |
 |---|---|---|---|
