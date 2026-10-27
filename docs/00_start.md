@@ -357,6 +357,8 @@ Phase 1 전체를 한 번에 검토할 수 없으므로 **모듈 → 기능 → 
 
 ## 7. 산출물 계획 (문서 번호 체계)
 
+문서는 모두 `docs/`에 둔다 (2026-10-27. 이전에는 저장소 루트). 루트에는 README와 코드 폴더만 남긴다.
+
 | 번호 | 문서 | 단계 | 역할 | 내용 |
 |---|---|---|---|---|
 | 00 | `00_start.md` | 시작 | 공통 | 개발 방향성 (본 문서) |
@@ -411,6 +413,8 @@ Phase 1 전체를 한 번에 검토할 수 없으므로 **모듈 → 기능 → 
 
 ```
 MOA/
+├─ README.md     저장소 소개 (처음 보는 사람용)
+├─ docs/         프로젝트 문서 (00~05 번호 순, muse-feedback.md)
 ├─ core/         Spring Boot — MOA Core 서비스 (Phase 1)
 │   └─ src/main/java/moa/
 │       ├─ store/      ┐
@@ -421,8 +425,7 @@ MOA/
 │       └─ report/     ┘
 ├─ ai/           AI 서비스 (Phase 2, 별도 프로세스·DB)
 ├─ frontend/     React + Vite
-├─ knowledge/    AI 학습 자료 (Phase 2)
-└─ *.md          프로젝트 문서
+└─ knowledge/    AI 학습 자료 (Phase 2)
 ```
 
 - Core는 **모듈 우선 패키지 구조**(package-by-module)를 따른다. 모듈 루트에는 공개 API(application 서비스)와 공개 이벤트만 두고, 애그리거트·리포지토리·컨트롤러는 `internal/` 아래에 둔다.
