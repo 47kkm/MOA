@@ -387,7 +387,7 @@ Phase 1 전체를 한 번에 검토할 수 없으므로 **모듈 → 기능 → 
 - 각 문서는 **자기완결적**으로 쓴다. 읽는 데 필요한 배경은 그 문서 안에 짧게 다시 적고, "다른 문서 N장 참고" 식의 참조는 쓰지 않는다.
 - 문서 수는 늘리지 않는다. 단계가 하나 추가되면 새 문서가 아니라 기존 문서의 장으로 넣는 것을 먼저 검토한다.
 
-### 7.1 기술 스택 (2026-10-17 확정)
+### 7.1 기술 스택 (2026-10-17 확정, 2026-10-27 프론트 변경)
 
 | 영역 | 선택 | 비고 |
 |---|---|---|
@@ -402,10 +402,10 @@ Phase 1 전체를 한 번에 검토할 수 없으므로 **모듈 → 기능 → 
 | 테스트 DB | Testcontainers (MySQL) | H2는 MySQL DDL과 어긋남. Docker 있으므로 실제 MySQL 사용. 단위 테스트는 DB 없이 순수 Java |
 | 백엔드 테스트 | JUnit 5 · AssertJ · Mockito · ArchUnit | `@WebMvcTest`, `@DataJpaTest`(+Testcontainers) 레이어별 단위 테스트 |
 | LLM 연동 (Phase 2) | **Spring AI** | `ChatModel` 추상화에 Anthropic/Ollama 구현체 내장 → 4.5의 `LLMClient` 포트 역할. Phase 1에서는 의존성 미추가 |
-| 프론트 프레임워크 | **Nuxt 3** + Vue 3 + TypeScript | Node v22 확인됨 |
+| 프론트 프레임워크 | **React** + Vite + TypeScript (2026-10-27 변경. 이전: Nuxt 3 + Vue 3) | Node v22 확인됨. 바꾼 이유: 시장의 React 수요와 지원 직무 요건(React). 사용자는 Vue/Nuxt 경험이 많고 React는 운영 경험만 있어, MOA 프론트로 React를 처음부터 끝까지 해 본다. 서버 렌더링이 필요 없는 대시보드라 Next.js가 아니라 Vite SPA. 라우터·서버 상태 라이브러리는 5주차 시작 때 정함 |
 | 패키지 매니저 | npm | pnpm/yarn 미설치. 필요 시 corepack으로 전환 |
-| 프론트 테스트 | Vitest | |
-| UI / 차트 | Nuxt UI(Tailwind) / ECharts | 브랜드 방향 "깔끔한 대시보드, 직관적 시각화" |
+| 프론트 테스트 | Vitest + React Testing Library | |
+| UI / 차트 | Tailwind CSS / ECharts | 브랜드 방향 "깔끔한 대시보드, 직관적 시각화" (2026-10-27 Nuxt UI에서 변경) |
 
 **저장소 구조**
 
@@ -420,7 +420,7 @@ MOA/
 │       ├─ budget/     │
 │       └─ report/     ┘
 ├─ ai/           AI 서비스 (Phase 2, 별도 프로세스·DB)
-├─ frontend/     Nuxt
+├─ frontend/     React + Vite
 ├─ knowledge/    AI 학습 자료 (Phase 2)
 └─ *.md          프로젝트 문서
 ```
@@ -458,7 +458,7 @@ MOA/
 - [x] Phase 구분: Phase 1 서비스 구현 → Phase 2 AI 탑재 (5.1)
 - [x] RAG 전략: in-context RAG → YAML 온톨로지 tree. Graph RAG는 2차 확장 (4.4)
 - [x] Local LLM: Ollama + 7B급 모델, **카테고리 추론 용도로 한정**. 리포트 생성은 클라우드 LLM (4.5)
-- [x] 기술 스택: Java 17 · Spring Boot 3.x · Spring Modulith · PostgreSQL / Nuxt 3 · Vue 3 · TypeScript (7.1)
+- [x] 기술 스택: Java 17 · Spring Boot 3.x · Spring Modulith · MySQL 8 / React · Vite · TypeScript · Tailwind (7.1. 2026-10-18 DB를 MySQL로, 2026-10-27 프론트를 React로 변경)
 - [x] 아키텍처: Phase 1 = Core 서비스 하나, 모듈러 모놀리스 + **모듈별 스키마 분리(B)**. Phase 2 = AI 서비스만 물리 분리 (3.2, 2026-10-18)
 - [x] DB·ORM: **MySQL 8 + Spring Data JPA**, Testcontainers. 리포트 모듈은 필요 시 MyBatis (7.1, 2026-10-18)
 - [x] 목표 일정: **Phase 1 완료 2026-11-30**. 주차 계획은 아래
@@ -482,7 +482,7 @@ MOA/
 
 **학습 지도 (2026-10-24, 2026-10-27 갱신)**
 
-kei의 출발점: 자바 기본 문법, 기존 컨트롤러·서비스·매퍼 코드를 읽는 수준. JPA는 거의 모름. DDD 처음. Spring 기초 개념(빈, 트랜잭션, 스레드, DataSource 등)도 이름과 이유는 처음 (2026-10-27). 프론트(Vue/Nuxt)는 경험 많음. 각 단계 시작 전에 AI가 아래 항목을 먼저 짚고, 읽은 뒤에 진행한다. 책은 최범균 『도메인 주도 개발 시작하기』, 강의는 김영한 『자바 ORM 표준 JPA 프로그래밍 - 기본편』(12섹션).
+kei의 출발점: 자바 기본 문법, 기존 컨트롤러·서비스·매퍼 코드를 읽는 수준. JPA는 거의 모름. DDD 처음. Spring 기초 개념(빈, 트랜잭션, 스레드, DataSource 등)도 이름과 이유는 처음 (2026-10-27). 프론트는 Vue/Nuxt 경험이 많고 React는 운영 경험만 있음 (2026-10-27 MOA 프론트를 React로 정함). 각 단계 시작 전에 AI가 아래 항목을 먼저 짚고, 읽은 뒤에 진행한다. 책은 최범균 『도메인 주도 개발 시작하기』, 강의는 김영한 『자바 ORM 표준 JPA 프로그래밍 - 기본편』(12섹션).
 
 | 시점 | 단계 | 읽을 것 | 왜 |
 |---|---|---|---|
@@ -495,7 +495,8 @@ kei의 출발점: 자바 기본 문법, 기존 컨트롤러·서비스·매퍼 �
 | 3주차 시작 전 (11/02 확인에서 막히면) | Spring 기초 | 김영한 『스프링 핵심 원리 - 기본편』 중 "스프링 컨테이너와 스프링 빈", "컴포넌트 스캔", "의존관계 자동 주입" | 빈·주입·컴포넌트 스캔. sales를 직접 짜려면 읽는 걸 넘어 써야 함 |
 | 3주차 | 응용 서비스 구조 | 책 6장 (응용 서비스와 표현 영역) | 컨트롤러·서비스·도메인의 역할 분리. 없으면 규칙이 서비스로 새어 나감 |
 | 4주차 시작 전 | budget·report 모듈 | 강의 섹션 6 연관관계 매핑 기초. 책 4장 뒷부분 (밸류 컬렉션, 로딩 전략, 영속성 전파). 책 5장 (조회) 앞부분. MyBatis 여부는 그때 판단 | budget 항목 목록이 처음 나오는 연관관계 (04 5장의 cascade 결정). 리포트는 애그리거트가 아니라 조회 모델 |
-| 5주차 | 프론트 | 학습 불필요. 역할 분담은 그때 정함 (AI가 뼈대·API 연결, kei가 화면 다듬기 쪽 제안) | Vue/Nuxt 경험 많음 |
+| 11/15~16 (지원 제출 뒤 주말) | React 기본기 | react.dev "Learn"의 Describing the UI · Adding Interactivity · Managing State, Escape Hatches 중 Effect 부분 | Vue 출신이 걸리는 곳: 컴포넌트 함수 전체가 다시 실행됨, `useEffect` 의존성, 상태는 새 객체로 바꿈, `v-model` 없음 |
+| 5주차 | 프론트 (React) | 역할 분담은 5주차 시작 때 정함. 포트폴리오로 설명하려면 사용자가 직접 쓰는 몫이 커야 함. 범위가 넘치면 기획서 선택 기능부터 뺌 | 프론트 경험은 많지만 React로 처음부터 짜는 건 처음 |
 | 선택 | HTTP | 김영한 HTTP 기본 두 섹션 | 2주차에 여유 있으면 |
 
 강의 건너뜀: 섹션 1(강좌 소개), 7·8·9(다양한 연관관계, 고급 매핑, 프록시), 11·12(JPQL). 섹션 2(JPA 소개)는 선택.

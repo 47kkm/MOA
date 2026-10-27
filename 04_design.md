@@ -481,7 +481,7 @@ GET /api/stores/{id}   → get(id)    → 200 StoreInfo     없으면 ✗ 404 NO
  → 그 모듈의 컨트롤러          storeId를 다시 검증하지 않음 ("검사를 지나온 값")
 ```
 
-- 인터셉터 = 컨트롤러 앞에서 먼저 도는 검사. 프론트의 라우트 미들웨어(Nuxt `middleware`)와 같은 자리
+- 인터셉터 = 컨트롤러 앞에서 먼저 도는 검사. 프론트의 라우트 가드(Nuxt `middleware`, React Router `loader`)와 같은 자리
 - 애그리거트 루트와는 상관없다. Store 객체를 꺼내지 않고 "있나"만 본다
 
 | 왜 이렇게 | |
