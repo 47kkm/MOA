@@ -52,7 +52,7 @@ class ListenerBehaviorTest {
     }
 
     @Test
-    @DisplayName("리스너 확인 - 성공한 리스너는 내는 쪽 메서드가 돌아오기 전에 끝나 있다 (동기)")
+    @DisplayName("리스너 확인 - 성공한 리스너는 발행하는 쪽 메서드가 돌아오기 전에 끝나 있다 (동기)")
     void runsBeforeCallerReturns() {
         publisher.publish("a");
 
@@ -61,7 +61,7 @@ class ListenerBehaviorTest {
     }
 
     @Test
-    @DisplayName("리스너 확인 - 커밋 후 리스너의 예외는 내는 쪽으로 전파되지 않는다")
+    @DisplayName("리스너 확인 - 커밋 후 리스너의 예외는 발행하는 쪽으로 전파되지 않는다")
     void exceptionNotPropagated() {
         listener.shouldFail(true);
 
