@@ -117,7 +117,7 @@ core/
    ├─ main/java/moa/
    │   ├─ MoaApplication.java        main(). 여기서 Spring이 시작됨
    │   ├─ ClockConfig.java           "오늘"을 만드는 Clock 빈 (D0-6)
-   │   ├─ shared/                    공통 값 객체 (Money)
+   │   ├─ shared/                    공통 값 객체 (Money), 오류 코드 (ErrorCode · MoaException). internal/에 공통 오류 응답
    │   ├─ store/                     모듈. 아래 0.2 규칙
    │   ├─ category/
    │   ├─ sales/  expense/  budget/  report/
@@ -286,9 +286,9 @@ storeRepository.save(store)     ← MOA 코드는 여기까지만 안다
 |---|---|
 | 서버 | MySQL 8 하나 (Docker Compose). 테스트는 Testcontainers가 같은 이미지로 띄움 |
 | 스키마 | 모듈별 6개 `store, category, sales, expense, budget, report` + 공통 1개 `moa` (Flyway 이력표, Modulith `event_publication`) |
-| 연결 | DataSource 하나. JDBC URL의 기본 DB는 공통 스키마 `moa`. 모듈 엔티티는 `@Table(name = "categories", schema = "category")`처럼 스키마를 명시. → 왜 `moa`: Modulith 발행 기록은 MySQL에서 스키마 지정을 지원하지 않아 기본 DB에 있어야 함 (2026-10-27 뼈대에서 확인. 이전: 기본 DB 없음) |
+| 연결 | DataSource 하나. JDBC URL의 기본 DB는 공통 스키마 `moa`. 모듈 엔티티는 `@Table(name = "categories", catalog = "category")`처럼 스키마를 명시. **MySQL에서는 스키마(= DB)를 Hibernate가 catalog로 다루므로 `schema`가 아니라 `catalog`로 적는다** (2026-11-01 store 구현에서 확인. `schema`로 적으면 "missing table"). → 왜 `moa`: Modulith 발행 기록은 MySQL에서 스키마 지정을 지원하지 않아 기본 DB에 있어야 함 (2026-10-27 뼈대에서 확인. 이전: 기본 DB 없음) |
 | Flyway | 인스턴스 하나가 스키마 7개를 만들고 관리 (이력표는 `moa`). SQL 파일은 `db/migration/<모듈>/V<번호>__create_xxx.sql`. **번호는 폴더와 상관없이 전체에서 하나씩 증가** (V1 = moa 발행 기록, V2부터 store·category …). 인스턴스가 하나라 두 폴더에 같은 번호가 있으면 앱이 뜨지 않음 (2026-10-27 정정). 파일 안에서 `category.categories`처럼 스키마를 붙여 씀 |
-| 이름 규칙 | 테이블은 복수형 snake_case, 컬럼은 snake_case. 모든 테이블에 `id BIGINT AUTO_INCREMENT`, `created_at DATETIME`, `updated_at DATETIME`. 예외: Modulith의 `moa.EVENT_PUBLICATION`은 프레임워크가 정한 대문자 이름 그대로 |
+| 이름 규칙 | 테이블은 복수형 snake_case, 컬럼은 snake_case. 모든 테이블에 `id BIGINT AUTO_INCREMENT`, `created_at DATETIME`, `updated_at DATETIME`. `created_at`·`updated_at`은 DB 기본값(`DEFAULT CURRENT_TIMESTAMP`, `ON UPDATE CURRENT_TIMESTAMP`)이 채우고 엔티티에는 매핑하지 않는다 (2026-11-01). 예외: Modulith의 `moa.EVENT_PUBLICATION`은 프레임워크가 정한 대문자 이름 그대로 |
 | 금액 | `DECIMAL(15,0)`. 날짜는 `DATE`. 문자열은 `VARCHAR` + `utf8mb4` |
 | 모듈 간 참조 | `store_id`, `category_id` 같은 컬럼만. FK 제약 없음. JOIN 없음 |
 | 타임존 | 서버·JDBC 모두 `Asia/Seoul`. "오늘"은 `LocalDate.now(ZoneId.of("Asia/Seoul"))` 한 군데(`Clock` 빈)에서만 만든다 |
@@ -365,6 +365,20 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 
 - 분류 이동(선택)의 "상위를 옮기려 함" 거부 코드는 구현 때 정해 이 표에 더한다
 - 각 장의 흐름 그림과 N.7 HTTP 표에도 코드를 그대로 적는다. 이 표는 "코드의 뜻", 각 장은 "어디서 나오나"
+
+**예외 → 응답** (2026-11-01 store 구현)
+
+| 예외 | 응답 | 던지는 곳 |
+|---|---|---|
+| `MoaException(코드)` | 그 코드의 상태 (404 · 409) | 응용 서비스, 매장 접근 검사 |
+| `IllegalArgumentException` | 400 `VALIDATION` | 애그리거트의 입력 규칙 (이름 비움, 50자 초과, 업종 없음) |
+| 읽을 수 없는 JSON, 숫자 자리에 글자 | 400 `VALIDATION` | Spring (요청 변환) |
+| Spring MVC의 그 밖의 4xx (없는 주소, 지원하지 않는 메서드 …) | 상태 그대로. 404면 `NOT_FOUND`, 나머지는 `VALIDATION` | Spring |
+| 그 외 전부 | 500 `INTERNAL_ERROR`. 스택은 로그에만 | — |
+
+- 코드: `moa/shared/ErrorCode`(위 목록), `moa/shared/MoaException`, `moa/shared/internal/ApiExceptionHandler`
+- 테스트: `ApiExceptionHandlerTest` (500 · 없는 주소 404 · 숫자 자리에 글자 400)
+- Spring은 예외 타입이 직접 맞는 핸들러를 원인 예외보다 먼저 고른다. 그래서 "숫자 자리에 글자"는 `Exception` 핸들러에 잡히지 않게 핸들러를 따로 둔다
 
 ### 0.7 테스트 전략 [참고]
 
@@ -515,7 +529,7 @@ GET /api/stores/{id}   → get(id)    → 200 StoreInfo     없으면 ✗ 404 NO
 
 | 메서드 | 하는 일 | 규칙 검사 |
 |---|---|---|
-| `Store.register(name, type, today)` (정적) | 새 매장 생성 | 이름 규칙 |
+| `Store.register(name, type, today)` (정적) | 새 매장 생성 | 이름 규칙, 업종 필수 |
 | `update(name, type)` | 이름·업종 변경 | 이름 규칙. 업종은 바뀌어도 아무 일 없음 |
 
 - setter 없음. `registeredAt`을 바꾸는 메서드 없음
@@ -544,6 +558,11 @@ GET /api/stores/{id}   → get(id)    → 200 StoreInfo     없으면 ✗ 404 NO
 | HTTP | 매장 조회 - 없는 ID → 404 NOT_FOUND (store 자기 경로는 접근 검사에서 제외, 1.7) |
 | HTTP | 매장 접근 검사 - 없는 storeId 하위 경로(가짜 컨트롤러) → 404 STORE_NOT_FOUND |
 | HTTP | 매장 접근 검사 - 있는 storeId → 통과 |
+
+- 2026-11-01 구현하며 더함
+  - 단위: 전각 공백만 입력 → 거부 (자바 `trim()`은 전각 공백을 못 잘라 `strip()`을 씀). 이름 없음(null) → 거부 (요청 JSON에 name이 빠진 경우). 업종 비움 → 거부 (1.3 "업종 필수")
+  - 통합: 매장 목록 - 등록 전 0개, 등록 후 1개 (`GET /api/stores`)
+  - HTTP: 매장 등록 - 업종이 목록에 없음 → 400 VALIDATION
 
 ### 1.6 결정 사항 [검토]
 
@@ -593,8 +612,8 @@ CREATE TABLE store.stores (
   name          VARCHAR(50)  NOT NULL,
   store_type    VARCHAR(20)  NOT NULL,          -- CAFE / RESTAURANT / RETAIL / OTHER
   registered_at DATE         NOT NULL,
-  created_at    DATETIME     NOT NULL,
-  updated_at    DATETIME     NOT NULL
+  created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) CHARACTER SET utf8mb4;
 ```
 
@@ -608,7 +627,10 @@ moa/store/
     ├─ Store.java           애그리거트
     ├─ StoreRepository.java Spring Data
     ├─ StoreController.java
-    └─ StoreAccessInterceptor.java  /api/stores/{storeId}/** 매장 존재 검사 (Phase 2 로그인 검사 자리)
+    ├─ StoreAccessInterceptor.java  /api/stores/{storeId}/** 매장 존재 검사 (Phase 2 로그인 검사 자리)
+    └─ StoreWebConfig.java   인터셉터 등록. store 자기 경로(/api/stores/{id})는 제외
+
+resources/db/migration/store/V2__create_stores.sql
 ```
 
 ---
@@ -1006,8 +1028,8 @@ CREATE TABLE category.categories (
   name        VARCHAR(20)  NOT NULL,
   sort_order  INT          NOT NULL,
   active      TINYINT(1)   NOT NULL DEFAULT 1,
-  created_at  DATETIME     NOT NULL,
-  updated_at  DATETIME     NOT NULL,
+  created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_categories_store_parent (store_id, parent_id),
   UNIQUE KEY uk_categories_sibling_name (store_id, parent_id, name)
 ) CHARACTER SET utf8mb4;
