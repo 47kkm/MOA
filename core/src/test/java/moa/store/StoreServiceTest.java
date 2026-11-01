@@ -66,6 +66,16 @@ class StoreServiceTest {
                         e -> assertThat(e.getCode()).isEqualTo(ErrorCode.STORE_ALREADY_EXISTS));
     }
 
+    @Test
+    @DisplayName("매장 조회 - 이름·업종·등록일 반환")
+    void getReturnsStore() {
+        Long id = storeService.register("카페 모아", StoreType.CAFE).id();
+
+        StoreInfo found = storeService.get(id);
+
+        assertThat(found).isEqualTo(new StoreInfo(id, "카페 모아", StoreType.CAFE, TODAY));
+    }
+
     // "오늘"을 2026-10-28로 고정한다 (04 설계 D0-6)
     @TestConfiguration(proxyBeanMethods = false)
     static class FixedClock {
