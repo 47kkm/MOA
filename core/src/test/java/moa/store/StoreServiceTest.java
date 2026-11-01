@@ -1,6 +1,7 @@
 package moa.store;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Clock;
 import java.time.LocalDate;
@@ -19,6 +20,8 @@ import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.AssertablePublishedEvents;
 
 import moa.TestcontainersConfiguration;
+import moa.shared.ErrorCode;
+import moa.shared.MoaException;
 import moa.store.StoreEvents.StoreRegistered;
 
 /**
@@ -51,6 +54,16 @@ class StoreServiceTest {
         assertThat(events)
                 .contains(StoreRegistered.class)
                 .matching(StoreRegistered::storeId, info.id());
+    }
+
+    @Test
+    @DisplayName("매장 등록 - 이미 매장 있음 → STORE_ALREADY_EXISTS")
+    void rejectsSecondStore() {
+        storeService.register("카페 모아", StoreType.CAFE);
+
+        assertThatThrownBy(() -> storeService.register("두 번째 매장", StoreType.RETAIL))
+                .isInstanceOfSatisfying(MoaException.class,
+                        e -> assertThat(e.getCode()).isEqualTo(ErrorCode.STORE_ALREADY_EXISTS));
     }
 
     // "오늘"을 2026-10-28로 고정한다 (04 설계 D0-6)
