@@ -37,6 +37,11 @@ public class StoreService {
         return toInfo(store);
     }
 
+    @Transactional(readOnly = true)
+    public StoreInfo get(Long storeId) {
+        return stores.findById(storeId).map(StoreService::toInfo).orElseThrow();
+    }
+
     private static StoreInfo toInfo(Store store) {
         return new StoreInfo(store.getId(), store.getName(), store.getType(), store.getRegisteredAt());
     }
