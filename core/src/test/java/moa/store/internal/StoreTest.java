@@ -52,4 +52,14 @@ class StoreTest {
 
         assertThat(store.getName()).isEqualTo("카페 모아");
     }
+
+    @Test
+    @DisplayName("매장 등록 - 50자 초과 → 거부 (50자는 허용)")
+    void rejectsNameOver50() {
+        String fifty = "가".repeat(50);
+
+        assertThat(Store.register(fifty, StoreType.CAFE, TODAY).getName()).hasSize(50);
+        assertThatThrownBy(() -> Store.register(fifty + "가", StoreType.CAFE, TODAY))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }
