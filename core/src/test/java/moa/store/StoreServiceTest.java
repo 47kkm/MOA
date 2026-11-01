@@ -76,6 +76,14 @@ class StoreServiceTest {
         assertThat(found).isEqualTo(new StoreInfo(id, "카페 모아", StoreType.CAFE, TODAY));
     }
 
+    @Test
+    @DisplayName("매장 조회 - 없는 ID → NOT_FOUND")
+    void getMissingStore() {
+        assertThatThrownBy(() -> storeService.get(999L))
+                .isInstanceOfSatisfying(MoaException.class,
+                        e -> assertThat(e.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
+    }
+
     // "오늘"을 2026-10-28로 고정한다 (04 설계 D0-6)
     @TestConfiguration(proxyBeanMethods = false)
     static class FixedClock {
