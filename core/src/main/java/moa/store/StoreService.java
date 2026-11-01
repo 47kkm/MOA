@@ -2,6 +2,7 @@ package moa.store;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.List;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -42,6 +43,12 @@ public class StoreService {
         return stores.findById(storeId)
                 .map(StoreService::toInfo)
                 .orElseThrow(() -> new MoaException(ErrorCode.NOT_FOUND, "store not found: " + storeId));
+    }
+
+    // Phase 1에서는 0개 또는 1개. 프론트가 "매장이 있나"를 이걸로 판단한다
+    @Transactional(readOnly = true)
+    public List<StoreInfo> findAll() {
+        return stores.findAll().stream().map(StoreService::toInfo).toList();
     }
 
     private static StoreInfo toInfo(Store store) {
