@@ -21,6 +21,9 @@ public class Store {
         if (stripped.isEmpty()) {
             throw new IllegalArgumentException("name is required");
         }
+        if (stripped.length() > 50) {
+            throw new IllegalArgumentException("name must be at most 50 characters");
+        }
         return new Store(stripped, type, today);
     }
 
