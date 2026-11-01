@@ -84,6 +84,16 @@ class StoreServiceTest {
                         e -> assertThat(e.getCode()).isEqualTo(ErrorCode.NOT_FOUND));
     }
 
+    @Test
+    @DisplayName("매장 목록 - 등록 전 0개, 등록 후 1개")
+    void findAllBeforeAndAfterRegister() {
+        assertThat(storeService.findAll()).isEmpty();
+
+        StoreInfo info = storeService.register("카페 모아", StoreType.CAFE);
+
+        assertThat(storeService.findAll()).containsExactly(info);
+    }
+
     // "오늘"을 2026-10-28로 고정한다 (04 설계 D0-6)
     @TestConfiguration(proxyBeanMethods = false)
     static class FixedClock {
