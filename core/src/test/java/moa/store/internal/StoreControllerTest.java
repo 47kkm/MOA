@@ -35,6 +35,11 @@ class StoreControllerTest {
     @MockitoBean
     StoreService storeService;
 
+    // 매장 접근 검사(인터셉터)도 함께 뜨므로 필요하다. 가짜라 existsById는 늘 false →
+    // 아래 "없는 ID" 테스트가 NOT_FOUND면 store 자기 경로가 검사에서 빠졌다는 뜻이다 (04 설계 1.7)
+    @MockitoBean
+    StoreRepository stores;
+
     @Test
     @DisplayName("매장 등록 - 201과 본문")
     void registerReturns201() throws Exception {
@@ -83,7 +88,7 @@ class StoreControllerTest {
     }
 
     @Test
-    @DisplayName("매장 조회 - 없는 ID → 404 NOT_FOUND")
+    @DisplayName("매장 조회 - 없는 ID → 404 NOT_FOUND (store 자기 경로는 접근 검사에서 제외)")
     void getMissingStore() throws Exception {
         given(storeService.get(99L)).willThrow(new MoaException(ErrorCode.NOT_FOUND, "store not found: 99"));
 

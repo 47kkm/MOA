@@ -15,4 +15,6 @@ public interface StoreRepository extends Repository<Store, Long> {
     Optional<Store> findById(Long id);
 
     List<Store> findAll();
+
+    boolean existsById(Long id);
 }
