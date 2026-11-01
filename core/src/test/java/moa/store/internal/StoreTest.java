@@ -1,5 +1,6 @@
 package moa.store.internal;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDate;
@@ -12,6 +13,16 @@ import moa.store.StoreType;
 class StoreTest {
 
     private static final LocalDate TODAY = LocalDate.of(2026, 10, 28);
+
+    @Test
+    @DisplayName("매장 등록 - 정상 등록")
+    void registers() {
+        Store store = Store.register("카페 모아", StoreType.CAFE, TODAY);
+
+        assertThat(store.getName()).isEqualTo("카페 모아");
+        assertThat(store.getType()).isEqualTo(StoreType.CAFE);
+        assertThat(store.getRegisteredAt()).isEqualTo(TODAY);
+    }
 
     @Test
     @DisplayName("매장 등록 - 이름 비움 → 거부")
