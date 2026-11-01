@@ -22,7 +22,7 @@ public class Store {
 
     // 이름 규칙: 앞뒤 공백을 자른 뒤 1~50자 (04 설계 1.3). 등록과 수정이 함께 쓴다
     private static String validName(String name) {
-        String stripped = name.strip();
+        String stripped = name == null ? "" : name.strip();
         if (stripped.isEmpty()) {
             throw new IllegalArgumentException("name is required");
         }
