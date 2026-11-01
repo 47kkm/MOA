@@ -17,10 +17,11 @@ public class Store {
     }
 
     public static Store register(String name, StoreType type, LocalDate today) {
-        if (name.strip().isEmpty()) {
+        String stripped = name.strip();
+        if (stripped.isEmpty()) {
             throw new IllegalArgumentException("name is required");
         }
-        return new Store(name, type, today);
+        return new Store(stripped, type, today);
     }
 
     public String getName() {
