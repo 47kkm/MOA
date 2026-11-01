@@ -39,7 +39,9 @@ public class StoreService {
 
     @Transactional(readOnly = true)
     public StoreInfo get(Long storeId) {
-        return stores.findById(storeId).map(StoreService::toInfo).orElseThrow();
+        return stores.findById(storeId)
+                .map(StoreService::toInfo)
+                .orElseThrow(() -> new MoaException(ErrorCode.NOT_FOUND, "store not found: " + storeId));
     }
 
     private static StoreInfo toInfo(Store store) {
