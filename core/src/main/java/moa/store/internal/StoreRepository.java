@@ -1,0 +1,9 @@
+package moa.store.internal;
+
+import org.springframework.data.repository.Repository;
+
+// 쓰는 메서드만 적는다. 구현은 Spring Data가 만든다
+public interface StoreRepository extends Repository<Store, Long> {
+
+    Store save(Store store);
+}

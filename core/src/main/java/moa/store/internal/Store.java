@@ -2,13 +2,37 @@ package moa.store.internal;
 
 import java.time.LocalDate;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
 import moa.store.StoreType;
 
+// MySQL에서는 스키마(= DB)를 Hibernate가 catalog로 다룬다. schema로 적으면 테이블을 못 찾는다 (04 설계 0.4)
+@Entity
+@Table(name = "stores", catalog = "store")
 public class Store {
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
     private String name;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "store_type")
     private StoreType type;
+
     private LocalDate registeredAt;
+
+    // JPA가 DB에서 읽어 온 값을 채울 때 쓰는 빈 생성자. 우리 코드는 register()로만 만든다
+    protected Store() {
+    }
 
     private Store(String name, StoreType type, LocalDate registeredAt) {
         this.name = name;
@@ -37,6 +61,10 @@ public class Store {
             throw new IllegalArgumentException("type is required");
         }
         return type;
+    }
+
+    public Long getId() {
+        return id;
     }
 
     public String getName() {
