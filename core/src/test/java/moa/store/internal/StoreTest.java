@@ -62,4 +62,11 @@ class StoreTest {
         assertThatThrownBy(() -> Store.register(fifty + "가", StoreType.CAFE, TODAY))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    @DisplayName("매장 등록 - 이름 없음(null) → 거부")
+    void rejectsNullName() {
+        assertThatThrownBy(() -> Store.register(null, StoreType.CAFE, TODAY))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }
