@@ -10,7 +10,7 @@ public class Store {
     }
 
     public static Store register(String name, StoreType type, LocalDate today) {
-        if (name.trim().isEmpty()) {
+        if (name.strip().isEmpty()) {
             throw new IllegalArgumentException("name is required");
         }
         return new Store();
