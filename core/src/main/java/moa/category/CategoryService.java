@@ -27,10 +27,13 @@ public class CategoryService {
             .thenComparing(Category::getId);
 
     private final CategoryRepository categories;
+    private final CategoryUsage usage;
     private final ApplicationEventPublisher events;
 
-    public CategoryService(CategoryRepository categories, ApplicationEventPublisher events) {
+    // usage는 인터페이스만 안다. 실제로 무엇이 들어오는지(지금은 NoExpenseYet, 3주차부터 expense의 구현)는 Spring이 정한다
+    public CategoryService(CategoryRepository categories, CategoryUsage usage, ApplicationEventPublisher events) {
         this.categories = categories;
+        this.usage = usage;
         this.events = events;
     }
 
@@ -105,6 +108,10 @@ public class CategoryService {
         Category category = find(storeId, id);
         if (category.isTop() && categories.countByStoreIdAndParentId(storeId, id) > 0) {
             throw new MoaException(ErrorCode.CATEGORY_HAS_CHILDREN, "delete the child categories first");
+        }
+        // 누적 비용이 1건이라도 있으면 끄기만 할 수 있다 (04 설계 2.3)
+        if (usage.countByCategoryIds(storeId, List.of(id)).getOrDefault(id, 0L) > 0) {
+            throw new MoaException(ErrorCode.CATEGORY_IN_USE, "category has expenses: " + id);
         }
         rejectIfLastActiveTop(storeId, category);
         categories.delete(category);
