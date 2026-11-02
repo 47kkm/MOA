@@ -26,8 +26,16 @@ public class Category {
         return new Category(storeId, null, name, sortOrder);
     }
 
+    public static Category childOf(Category parent, String name, int sortOrder) {
+        return new Category(parent.storeId, parent.id, name, sortOrder);
+    }
+
     public boolean isTop() {
         return parentId == null;
+    }
+
+    public boolean isChildOf(Category parent) {
+        return parent.id.equals(parentId);
     }
 
     public Long getId() {
