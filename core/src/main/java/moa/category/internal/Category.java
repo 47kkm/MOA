@@ -1,7 +1,18 @@
 package moa.category.internal;
 
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+// 애그리거트는 분류 하나 (04 설계 D2-1). 상위는 parentId로만 가리키고 JPA 연관관계는 쓰지 않는다
+@Entity
+@Table(name = "categories", catalog = "category")
 public class Category {
 
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     private Long storeId;
@@ -13,6 +24,10 @@ public class Category {
     private int sortOrder;
 
     private boolean active;
+
+    // JPA가 DB에서 읽어 온 값을 채울 때 쓰는 빈 생성자. 우리 코드는 top()·childOf()로만 만든다
+    protected Category() {
+    }
 
     private Category(Long storeId, Long parentId, String name, int sortOrder) {
         this.storeId = storeId;
