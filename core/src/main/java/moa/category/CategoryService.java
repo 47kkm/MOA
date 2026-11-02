@@ -43,7 +43,7 @@ public class CategoryService {
         if (parent != null && !parent.isTop()) {
             throw new MoaException(ErrorCode.CATEGORY_DEPTH, "categories have at most 2 levels");
         }
-        // 꺼진 상위 아래에 켜진 하위가 생기지 않게 (04 설계 2.3)
+        // 꺼진 상위 아래에 켜진 하위가 생기지 않게 (04 설계 2.3, D2-12)
         if (parent != null && !parent.isActive()) {
             throw new MoaException(ErrorCode.CATEGORY_PARENT_INACTIVE, "parent category is inactive");
         }
@@ -76,7 +76,7 @@ public class CategoryService {
         return toInfo(category, parentOf(category));
     }
 
-    // 상위를 끄면 하위도 같은 트랜잭션에서 끈다 (04 설계 D2-7). 돌려주는 것은 이번에 꺼진 ID 전부
+    // 상위를 끄면 하위도 같은 트랜잭션에서 끈다 (04 설계 D2-7). 돌려주는 것은 이번에 꺼진 ID만. 이미 꺼져 있던 하위는 빠진다 (04 설계 2.2)
     @Transactional
     public List<Long> deactivate(Long storeId, Long id) {
         Category category = find(storeId, id);
@@ -106,7 +106,7 @@ public class CategoryService {
         return toInfo(category, parentOf(category));
     }
 
-    // 상위를 지우면 하위도 같은 트랜잭션에서 지운다. JPA cascade 없이 리포지토리로 하나씩. 이벤트 없음 (04 설계 D2-6)
+    // 상위를 지우면 하위도 같은 트랜잭션에서 지운다. JPA cascade 없이 리포지토리로 하나씩 (04 설계 D2-11). 이벤트 없음 (D2-6)
     @Transactional
     public void delete(Long storeId, Long id) {
         Category category = find(storeId, id);
