@@ -1,7 +1,9 @@
 package moa.category;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -150,6 +152,27 @@ public class CategoryService {
     private Category find(Long storeId, Long id) {
         return categories.findByIdAndStoreId(id, storeId)
                 .orElseThrow(() -> new MoaException(ErrorCode.NOT_FOUND, "category not found: " + id));
+    }
+
+    // expense가 비용 등록·재분류 때 부른다. 없는 분류도 false (04 설계 2.2 "분류 존재 확인")
+    @Transactional(readOnly = true)
+    public boolean isActive(Long storeId, Long categoryId) {
+        return categories.findByIdAndStoreId(categoryId, storeId).map(Category::isActive).orElse(false);
+    }
+
+    // expense(비용 목록의 분류 경로)와 report(분류별 집계 이름)가 쓴다. 건수는 채우지 않는다 (04 설계 2.7)
+    @Transactional(readOnly = true)
+    public Map<Long, CategoryInfo> infoOf(Long storeId, Collection<Long> categoryIds) {
+        Map<Long, Category> byId = new HashMap<>();
+        categories.findByStoreId(storeId).forEach(c -> byId.put(c.getId(), c));
+        Map<Long, CategoryInfo> result = new HashMap<>();
+        for (Long id : categoryIds) {
+            Category category = byId.get(id);
+            if (category != null) {
+                result.put(id, toInfo(category, category.isTop() ? null : byId.get(category.getParentId())));
+            }
+        }
+        return result;
     }
 
     private Category parentOf(Category category) {
