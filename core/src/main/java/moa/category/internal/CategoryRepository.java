@@ -31,6 +31,9 @@ public interface CategoryRepository extends Repository<Category, Long> {
 
     boolean existsByStoreIdAndParentIdAndName(Long storeId, Long parentId, String name);
 
+    // 이름 변경용. 자기 자신(id)은 빼고 찾는다
+    boolean existsByStoreIdAndParentIdAndNameAndIdNot(Long storeId, Long parentId, String name, Long id);
+
     // 템플릿을 넣을 때 같은 이름의 상위가 있으면 그것을 쓴다
     Optional<Category> findByStoreIdAndParentIdAndName(Long storeId, Long parentId, String name);
 

@@ -70,7 +70,10 @@ public class CategoryService {
         if (newName.equals(oldName)) {
             return toInfo(category, parentOf(category));
         }
-        rejectDuplicateName(storeId, category.getParentId(), newName);
+        // 정렬 규칙이 대소문자를 구분하지 않아 "Coffee" → "coffee"에서 자기 자신이 잡힌다. 자신은 빼고 찾는다 (04 설계 D2-13)
+        if (categories.existsByStoreIdAndParentIdAndNameAndIdNot(storeId, category.getParentId(), newName, id)) {
+            throw new MoaException(ErrorCode.CATEGORY_NAME_DUPLICATE, "same name exists among siblings");
+        }
         category.rename(newName);
         events.publishEvent(new CategoryRenamed(storeId, id, oldName, newName));
         return toInfo(category, parentOf(category));
