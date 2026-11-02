@@ -18,6 +18,9 @@ public interface CategoryRepository extends Repository<Category, Long> {
     // parentId가 null이면 상위 분류끼리 센다
     long countByStoreIdAndParentId(Long storeId, Long parentId);
 
+    // 형제 중 순서가 가장 뒤인 것 (새 분류의 순서)
+    Optional<Category> findTopByStoreIdAndParentIdOrderBySortOrderDesc(Long storeId, Long parentId);
+
     boolean existsByStoreIdAndParentIdAndName(Long storeId, Long parentId, String name);
 
     // 켜진 상위 분류 수

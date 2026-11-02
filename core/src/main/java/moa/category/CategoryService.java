@@ -50,7 +50,7 @@ public class CategoryService {
         if (siblings >= MAX_SIBLINGS) {
             throw new MoaException(ErrorCode.CATEGORY_LIMIT, "at most " + MAX_SIBLINGS + " categories per level");
         }
-        int sortOrder = siblings;
+        int sortOrder = nextSortOrder(storeId, parentId);
         Category category = parent == null
                 ? Category.top(storeId, name, sortOrder)
                 : Category.childOf(parent, name, sortOrder);
@@ -132,6 +132,13 @@ public class CategoryService {
                     .forEach(child -> result.add(toInfo(child, top, counts)));
         });
         return includeInactive ? result : result.stream().filter(CategoryInfo::active).toList();
+    }
+
+    // 형제 끝 = 지금 가장 큰 순서 + 1. 형제 수로 정하면 앞쪽 형제를 지운 뒤 번호가 겹친다
+    private int nextSortOrder(Long storeId, Long parentId) {
+        return categories.findTopByStoreIdAndParentIdOrderBySortOrderDesc(storeId, parentId)
+                .map(last -> last.getSortOrder() + 1)
+                .orElse(0);
     }
 
     // 형제 = 같은 상위 아래. 상위끼리는 전체가 형제다. 꺼진 분류도 센다 (04 설계 2.3)
