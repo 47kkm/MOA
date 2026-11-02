@@ -348,6 +348,20 @@ class CategoryServiceTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM category.categories", Integer.class)).isEqualTo(1);
     }
 
+    // 상위와 하위의 건수를 합쳐 1건이라도 있으면 아무것도 지우지 않는다
+    @Test
+    @DisplayName("분류 삭제 - 하위 중 하나라도 사용 → CATEGORY_IN_USE, 상위·하위 모두 남음")
+    void deleteTopWithUsedChild() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo milk = categoryService.add(STORE_ID, food.id(), "유제품");
+        categoryService.add(STORE_ID, null, "임대료");
+        usage.set(milk.id(), 1);
+
+        assertFails(ErrorCode.CATEGORY_IN_USE, () -> categoryService.delete(STORE_ID, food.id()));
+        assertThat(activeByPath()).containsOnlyKeys("식자재", "식자재 > 원두", "식자재 > 유제품", "임대료");
+    }
+
     @Test
     @DisplayName("분류 삭제 - 마지막 상위 → CATEGORY_LAST_ACTIVE")
     void deleteLastActiveTop() {
