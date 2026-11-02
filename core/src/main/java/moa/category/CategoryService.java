@@ -80,10 +80,10 @@ public class CategoryService {
     @Transactional
     public List<Long> deactivate(Long storeId, Long id) {
         Category category = find(storeId, id);
-        rejectIfLastActiveTop(storeId, category);
         if (!category.isActive()) {
             return List.of();
         }
+        rejectIfLastActiveTop(storeId, category);
         category.deactivate();
         List<Long> deactivated = new ArrayList<>(List.of(id));
         if (category.isTop()) {
