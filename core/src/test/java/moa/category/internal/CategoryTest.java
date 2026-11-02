@@ -1,6 +1,7 @@
 package moa.category.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,16 @@ class CategoryTest {
         assertThat(child.getParentId()).isEqualTo(10L);
         assertThat(child.isTop()).isFalse();
         assertThat(child.isChildOf(parent)).isTrue();
+    }
+
+    @Test
+    @DisplayName("분류 추가 - 하위 아래 추가 → 거부 (2단계 초과)")
+    void rejectsGrandchild() {
+        Category parent = saved(Category.top(STORE_ID, "식자재", 0), 10L);
+        Category child = saved(Category.childOf(parent, "원두", 0), 11L);
+
+        assertThatThrownBy(() -> Category.childOf(child, "에티오피아", 0))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     // id는 DB가 매긴다. 단위 테스트에는 DB가 없으므로 저장된 것처럼 id를 직접 넣는다
