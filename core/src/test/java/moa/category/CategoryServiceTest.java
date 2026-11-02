@@ -333,14 +333,19 @@ class CategoryServiceTest {
         assertThat(activeByPath()).containsOnlyKeys("식자재");
     }
 
+    // 상위를 지우면 하위도 같은 트랜잭션에서 지운다 (기획서 P2-7, 2026-11-03 변경)
     @Test
-    @DisplayName("분류 삭제 - 하위 있는 상위 → CATEGORY_HAS_CHILDREN")
+    @DisplayName("분류 삭제 - 0건 상위와 하위 → 함께 삭제")
     void deleteTopWithChildren() {
         CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
         categoryService.add(STORE_ID, food.id(), "원두");
+        categoryService.add(STORE_ID, food.id(), "유제품");
         categoryService.add(STORE_ID, null, "임대료");
 
-        assertFails(ErrorCode.CATEGORY_HAS_CHILDREN, () -> categoryService.delete(STORE_ID, food.id()));
+        categoryService.delete(STORE_ID, food.id());
+
+        assertThat(activeByPath()).containsOnlyKeys("임대료");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM category.categories", Integer.class)).isEqualTo(1);
     }
 
     @Test
