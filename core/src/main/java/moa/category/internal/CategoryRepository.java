@@ -18,8 +18,16 @@ public interface CategoryRepository extends Repository<Category, Long> {
     // parentId가 null이면 상위 분류끼리 센다
     long countByStoreIdAndParentId(Long storeId, Long parentId);
 
-    // 형제 중 순서가 가장 뒤인 것 (새 분류의 순서)
+    // 형제 중 순서가 가장 뒤인 것
     Optional<Category> findTopByStoreIdAndParentIdOrderBySortOrderDesc(Long storeId, Long parentId);
+
+    // 새 분류의 순서 = 형제 끝. 형제 수로 정하면 앞쪽 형제를 지운 뒤 번호가 겹친다.
+    // 인터페이스의 default 메서드는 Spring Data가 구현을 만들지 않고 이 코드를 그대로 쓴다
+    default int nextSortOrder(Long storeId, Long parentId) {
+        return findTopByStoreIdAndParentIdOrderBySortOrderDesc(storeId, parentId)
+                .map(last -> last.getSortOrder() + 1)
+                .orElse(0);
+    }
 
     boolean existsByStoreIdAndParentIdAndName(Long storeId, Long parentId, String name);
 

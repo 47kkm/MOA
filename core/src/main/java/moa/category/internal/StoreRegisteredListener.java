@@ -47,7 +47,7 @@ class StoreRegisteredListener {
                 if (isFull(storeId, null)) {
                     continue;
                 }
-                top = categories.save(Category.top(storeId, node.name(), nextSortOrder(storeId, null)));
+                top = categories.save(Category.top(storeId, node.name(), categories.nextSortOrder(storeId, null)));
                 created++;
             }
             for (String childName : node.children()) {
@@ -55,7 +55,7 @@ class StoreRegisteredListener {
                         || isFull(storeId, top.getId())) {
                     continue;
                 }
-                Category child = Category.childOf(top, childName, nextSortOrder(storeId, top.getId()));
+                Category child = Category.childOf(top, childName, categories.nextSortOrder(storeId, top.getId()));
                 // 꺼진 상위에 합치면 넣는 하위도 꺼진 상태로
                 if (!top.isActive()) {
                     child.deactivate();
@@ -70,11 +70,5 @@ class StoreRegisteredListener {
 
     private boolean isFull(Long storeId, Long parentId) {
         return categories.countByStoreIdAndParentId(storeId, parentId) >= Category.MAX_SIBLINGS;
-    }
-
-    private int nextSortOrder(Long storeId, Long parentId) {
-        return categories.findTopByStoreIdAndParentIdOrderBySortOrderDesc(storeId, parentId)
-                .map(last -> last.getSortOrder() + 1)
-                .orElse(0);
     }
 }
