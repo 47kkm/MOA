@@ -143,6 +143,9 @@ class CategoryServiceTest {
         CategoryInfo renamed = categoryService.rename(STORE_ID, beans.id(), " 커피콩 ");
 
         assertThat(renamed.path()).isEqualTo("식자재 > 커피콩");
+        assertThat(categoryService.tree(STORE_ID, false))
+                .extracting(CategoryInfo::path)
+                .containsExactly("식자재", "식자재 > 커피콩");
         assertThat(events)
                 .contains(CategoryRenamed.class)
                 .matching(e -> e.oldName().equals("원두") && e.newName().equals("커피콩"));

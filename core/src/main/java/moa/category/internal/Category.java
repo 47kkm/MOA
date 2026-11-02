@@ -67,8 +67,9 @@ public class Category {
         this.active = true;
     }
 
-    // 이름 규칙: 앞뒤 공백을 자른 뒤 1~20자 (04 설계 2.3)
-    private static String validName(String name) {
+    // 이름 규칙: 앞뒤 공백을 자른 뒤 1~20자 (04 설계 2.3).
+    // 응용 서비스도 쓴다: 이름 변경 때 형제 이름과 비교하기 전에 같은 규칙으로 자른다
+    public static String validName(String name) {
         String stripped = name == null ? "" : name.strip();
         if (stripped.isEmpty()) {
             throw new IllegalArgumentException("name is required");

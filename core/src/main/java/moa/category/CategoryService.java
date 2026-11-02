@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import moa.category.CategoryEvents.CategoryAdded;
+import moa.category.CategoryEvents.CategoryRenamed;
 import moa.category.internal.Category;
 import moa.category.internal.CategoryRepository;
 import moa.shared.ErrorCode;
@@ -52,6 +53,21 @@ public class CategoryService {
         return toInfo(category, parent);
     }
 
+    @Transactional
+    public CategoryInfo rename(Long storeId, Long id, String name) {
+        Category category = find(storeId, id);
+        String oldName = category.getName();
+        String newName = Category.validName(name);
+        // 지금 이름은 형제 중 같은 이름에 걸리므로 중복 검사 전에 거른다. 아무 일 없고 이벤트도 없다 (04 설계 2.2)
+        if (newName.equals(oldName)) {
+            return toInfo(category, parentOf(category));
+        }
+        rejectDuplicateName(storeId, category.getParentId(), newName);
+        category.rename(newName);
+        events.publishEvent(new CategoryRenamed(storeId, id, oldName, newName));
+        return toInfo(category, parentOf(category));
+    }
+
     // 상위 → 그 하위 순서로 펼친다
     @Transactional(readOnly = true)
     public List<CategoryInfo> tree(Long storeId, boolean includeInactive) {
@@ -75,6 +91,10 @@ public class CategoryService {
     private Category find(Long storeId, Long id) {
         return categories.findByIdAndStoreId(id, storeId)
                 .orElseThrow(() -> new MoaException(ErrorCode.NOT_FOUND, "category not found: " + id));
+    }
+
+    private Category parentOf(Category category) {
+        return category.isTop() ? null : find(category.getStoreId(), category.getParentId());
     }
 
     private static CategoryInfo toInfo(Category category, Category parent) {
