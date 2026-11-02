@@ -34,8 +34,14 @@ public class Category {
         return new Category(parent.storeId, parent.id, validName(name), sortOrder);
     }
 
-    public void rename(String name) {
-        this.name = validName(name);
+    // 바뀌었으면 true. 공백을 자르고 보니 지금 이름과 같으면 아무 일 없이 false
+    public boolean rename(String name) {
+        String newName = validName(name);
+        if (newName.equals(this.name)) {
+            return false;
+        }
+        this.name = newName;
+        return true;
     }
 
     // 이름 규칙: 앞뒤 공백을 자른 뒤 1~20자 (04 설계 2.3)
