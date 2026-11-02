@@ -38,18 +38,34 @@ class StoreRegisteredListener {
         if (applications.existsById(storeId)) {
             return;
         }
+        // 사장님이 먼저 만든 분류와 이름이 겹칠 수 있다. 2.3 규칙을 우회하지 않게 형제 이름을 먼저 본다 (04 설계 D2-10)
         int created = 0;
-        int topOrder = 0;
         for (CategoryTemplate.Node node : CategoryTemplate.NODES) {
-            Category top = categories.save(Category.top(storeId, node.name(), topOrder++));
-            created++;
-            int childOrder = 0;
+            Category top = categories.findByStoreIdAndParentIdAndName(storeId, null, node.name()).orElse(null);
+            if (top == null) {
+                top = categories.save(Category.top(storeId, node.name(), nextSortOrder(storeId, null)));
+                created++;
+            }
             for (String childName : node.children()) {
-                categories.save(Category.childOf(top, childName, childOrder++));
+                if (categories.existsByStoreIdAndParentIdAndName(storeId, top.getId(), childName)) {
+                    continue;
+                }
+                Category child = Category.childOf(top, childName, nextSortOrder(storeId, top.getId()));
+                // 꺼진 상위에 합치면 넣는 하위도 꺼진 상태로
+                if (!top.isActive()) {
+                    child.deactivate();
+                }
+                categories.save(child);
                 created++;
             }
         }
         applications.save(new TemplateApplication(storeId, LocalDateTime.now(clock)));
         events.publishEvent(new DefaultCategoriesCreated(storeId, created));
+    }
+
+    private int nextSortOrder(Long storeId, Long parentId) {
+        return categories.findTopByStoreIdAndParentIdOrderBySortOrderDesc(storeId, parentId)
+                .map(last -> last.getSortOrder() + 1)
+                .orElse(0);
     }
 }

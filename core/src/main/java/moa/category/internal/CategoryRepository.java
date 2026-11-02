@@ -23,6 +23,9 @@ public interface CategoryRepository extends Repository<Category, Long> {
 
     boolean existsByStoreIdAndParentIdAndName(Long storeId, Long parentId, String name);
 
+    // 템플릿을 넣을 때 같은 이름의 상위가 있으면 그것을 쓴다
+    Optional<Category> findByStoreIdAndParentIdAndName(Long storeId, Long parentId, String name);
+
     // 켜진 상위 분류 수
     long countByStoreIdAndParentIdIsNullAndActiveTrue(Long storeId);
 
