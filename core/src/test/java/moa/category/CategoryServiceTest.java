@@ -15,6 +15,7 @@ import org.springframework.modulith.test.AssertablePublishedEvents;
 
 import moa.TestcontainersConfiguration;
 import moa.category.CategoryEvents.CategoryAdded;
+import moa.category.CategoryEvents.CategoryRenamed;
 import moa.shared.ErrorCode;
 import moa.shared.MoaException;
 
@@ -131,6 +132,41 @@ class CategoryServiceTest {
         }
 
         assertFails(ErrorCode.CATEGORY_LIMIT, () -> categoryService.add(STORE_ID, food.id(), "하위21"));
+    }
+
+    @Test
+    @DisplayName("분류 이름 변경 - 정상, CategoryRenamed 발행")
+    void rename(AssertablePublishedEvents events) {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+
+        CategoryInfo renamed = categoryService.rename(STORE_ID, beans.id(), " 커피콩 ");
+
+        assertThat(renamed.path()).isEqualTo("식자재 > 커피콩");
+        assertThat(events)
+                .contains(CategoryRenamed.class)
+                .matching(e -> e.oldName().equals("원두") && e.newName().equals("커피콩"));
+    }
+
+    @Test
+    @DisplayName("분류 이름 변경 - 중복 → CATEGORY_NAME_DUPLICATE")
+    void renameToSiblingName() {
+        categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+
+        assertFails(ErrorCode.CATEGORY_NAME_DUPLICATE, () -> categoryService.rename(STORE_ID, rent.id(), "식자재"));
+    }
+
+    // 지금 이름도 "형제 중 같은 이름"에 걸리므로, 중복 검사보다 먼저 걸러야 한다
+    @Test
+    @DisplayName("분류 이름 변경 - 같은 이름 → 200, 이벤트 없음")
+    void renameToSameName(AssertablePublishedEvents events) {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+
+        CategoryInfo same = categoryService.rename(STORE_ID, food.id(), " 식자재 ");
+
+        assertThat(same.name()).isEqualTo("식자재");
+        assertThat(events.ofType(CategoryRenamed.class)).isEmpty();
     }
 
     private static void assertFails(ErrorCode code, ThrowingCallable call) {
