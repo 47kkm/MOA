@@ -141,6 +141,17 @@ class CategoryServiceTest {
         assertFails(ErrorCode.CATEGORY_NAME_DUPLICATE, () -> categoryService.add(STORE_ID, food.id(), "원두"));
     }
 
+    // MySQL 정렬 규칙(utf8mb4_0900_ai_ci)이 대소문자를 구분하지 않는다. 그대로 받아들임 (2026-11-03 kei 결정)
+    @Test
+    @DisplayName("분류 추가 - 대소문자만 다른 이름 → CATEGORY_NAME_DUPLICATE")
+    void addDuplicateIgnoringCase() {
+        CategoryInfo coffee = categoryService.add(STORE_ID, null, "Coffee");
+        categoryService.add(STORE_ID, coffee.id(), "Beans");
+
+        assertFails(ErrorCode.CATEGORY_NAME_DUPLICATE, () -> categoryService.add(STORE_ID, null, "coffee"));
+        assertFails(ErrorCode.CATEGORY_NAME_DUPLICATE, () -> categoryService.add(STORE_ID, coffee.id(), "BEANS"));
+    }
+
     @Test
     @DisplayName("분류 추가 - 다른 상위와는 중복 허용")
     void sameNameUnderDifferentParents() {
