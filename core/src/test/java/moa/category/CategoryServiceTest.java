@@ -2,6 +2,11 @@ package moa.category;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.entry;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +20,7 @@ import org.springframework.modulith.test.AssertablePublishedEvents;
 
 import moa.TestcontainersConfiguration;
 import moa.category.CategoryEvents.CategoryAdded;
+import moa.category.CategoryEvents.CategoryDeactivated;
 import moa.category.CategoryEvents.CategoryRenamed;
 import moa.shared.ErrorCode;
 import moa.shared.MoaException;
@@ -170,6 +176,58 @@ class CategoryServiceTest {
 
         assertThat(same.name()).isEqualTo("식자재");
         assertThat(events.ofType(CategoryRenamed.class)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("분류 비활성화 - 하위 없는 상위 → 꺼짐, CategoryDeactivated 발행")
+    void deactivateTop(AssertablePublishedEvents events) {
+        categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+
+        List<Long> deactivated = categoryService.deactivate(STORE_ID, rent.id());
+
+        assertThat(deactivated).containsExactly(rent.id());
+        assertThat(activeByPath()).containsExactly(entry("식자재", true), entry("임대료", false));
+        assertThat(events)
+                .contains(CategoryDeactivated.class)
+                .matching(CategoryDeactivated::categoryIds, List.of(rent.id()));
+    }
+
+    @Test
+    @DisplayName("분류 비활성화 - 하위 있는 상위 → 하위도 함께 꺼짐")
+    void deactivateTopWithChildren() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo milk = categoryService.add(STORE_ID, food.id(), "유제품");
+        categoryService.add(STORE_ID, null, "임대료");
+
+        List<Long> deactivated = categoryService.deactivate(STORE_ID, food.id());
+
+        assertThat(deactivated).containsExactlyInAnyOrder(food.id(), beans.id(), milk.id());
+        assertThat(activeByPath()).containsExactly(
+                entry("식자재", false), entry("식자재 > 원두", false), entry("식자재 > 유제품", false),
+                entry("임대료", true));
+    }
+
+    @Test
+    @DisplayName("분류 비활성화 - 하위만 → 상위·형제는 그대로")
+    void deactivateChildOnly() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        categoryService.add(STORE_ID, food.id(), "유제품");
+
+        List<Long> deactivated = categoryService.deactivate(STORE_ID, beans.id());
+
+        assertThat(deactivated).containsExactly(beans.id());
+        assertThat(activeByPath()).containsExactly(
+                entry("식자재", true), entry("식자재 > 원두", false), entry("식자재 > 유제품", true));
+    }
+
+    // 꺼진 것까지 tree 순서대로 "경로 → 켜짐 여부"
+    private Map<String, Boolean> activeByPath() {
+        Map<String, Boolean> result = new LinkedHashMap<>();
+        categoryService.tree(STORE_ID, true).forEach(info -> result.put(info.path(), info.active()));
+        return result;
     }
 
     private static void assertFails(ErrorCode code, ThrowingCallable call) {
