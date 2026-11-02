@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 import moa.category.CategoryEvents.CategoryAdded;
 import moa.category.internal.Category;
 import moa.category.internal.CategoryRepository;
+import moa.shared.ErrorCode;
+import moa.shared.MoaException;
 
 @Service
 public class CategoryService {
@@ -29,7 +31,10 @@ public class CategoryService {
 
     @Transactional
     public CategoryInfo add(Long storeId, Long parentId, String name) {
-        Category parent = parentId == null ? null : categories.findByIdAndStoreId(parentId, storeId).orElseThrow();
+        Category parent = parentId == null ? null : find(storeId, parentId);
+        if (parent != null && !parent.isTop()) {
+            throw new MoaException(ErrorCode.CATEGORY_DEPTH, "categories have at most 2 levels");
+        }
         int sortOrder = (int) categories.countByStoreIdAndParentId(storeId, parentId);
         Category category = categories.save(parent == null
                 ? Category.top(storeId, name, sortOrder)
@@ -49,6 +54,11 @@ public class CategoryService {
                     .forEach(child -> result.add(toInfo(child, top)));
         });
         return result;
+    }
+
+    private Category find(Long storeId, Long id) {
+        return categories.findByIdAndStoreId(id, storeId)
+                .orElseThrow(() -> new MoaException(ErrorCode.NOT_FOUND, "category not found: " + id));
     }
 
     private static CategoryInfo toInfo(Category category, Category parent) {

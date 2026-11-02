@@ -10,7 +10,9 @@ public enum ErrorCode {
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR),
 
     STORE_NOT_FOUND(HttpStatus.NOT_FOUND),
-    STORE_ALREADY_EXISTS(HttpStatus.CONFLICT);
+    STORE_ALREADY_EXISTS(HttpStatus.CONFLICT),
+
+    CATEGORY_DEPTH(HttpStatus.CONFLICT);
 
     private final HttpStatus status;
 
