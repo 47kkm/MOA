@@ -187,6 +187,20 @@ class CategoryServiceTest {
         assertFails(ErrorCode.CATEGORY_LIMIT, () -> categoryService.add(STORE_ID, null, "상위21"));
     }
 
+    // 꺼진 분류도 자리를 차지한다 (04 설계 2.3 "꺼진 것 포함")
+    @Test
+    @DisplayName("분류 추가 - 꺼진 것 포함 상위 20개 → CATEGORY_LIMIT")
+    void topLimitCountsInactive() {
+        for (int i = 1; i <= 20; i++) {
+            CategoryInfo top = categoryService.add(STORE_ID, null, "상위" + i);
+            if (i > 10) {
+                categoryService.deactivate(STORE_ID, top.id());
+            }
+        }
+
+        assertFails(ErrorCode.CATEGORY_LIMIT, () -> categoryService.add(STORE_ID, null, "상위21"));
+    }
+
     @Test
     @DisplayName("분류 추가 - 하위 20개 → CATEGORY_LIMIT")
     void childLimit() {
