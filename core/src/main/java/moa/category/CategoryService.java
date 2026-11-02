@@ -43,6 +43,10 @@ public class CategoryService {
         if (parent != null && !parent.isTop()) {
             throw new MoaException(ErrorCode.CATEGORY_DEPTH, "categories have at most 2 levels");
         }
+        // 꺼진 상위 아래에 켜진 하위가 생기지 않게 (04 설계 2.3)
+        if (parent != null && !parent.isActive()) {
+            throw new MoaException(ErrorCode.CATEGORY_PARENT_INACTIVE, "parent category is inactive");
+        }
         if (categories.countByStoreIdAndParentId(storeId, parentId) >= Category.MAX_SIBLINGS) {
             throw new MoaException(ErrorCode.CATEGORY_LIMIT,
                     "at most " + Category.MAX_SIBLINGS + " categories per level");
