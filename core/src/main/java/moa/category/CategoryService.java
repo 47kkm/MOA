@@ -102,18 +102,17 @@ public class CategoryService {
         return toInfo(category, parentOf(category));
     }
 
-    // 이벤트 없음 (04 설계 D2-6)
+    // 상위를 지우면 하위도 같은 트랜잭션에서 지운다. JPA cascade 없이 리포지토리로 하나씩. 이벤트 없음 (04 설계 D2-6)
     @Transactional
     public void delete(Long storeId, Long id) {
         Category category = find(storeId, id);
-        if (category.isTop() && categories.countByStoreIdAndParentId(storeId, id) > 0) {
-            throw new MoaException(ErrorCode.CATEGORY_HAS_CHILDREN, "delete the child categories first");
-        }
+        List<Category> children = category.isTop() ? categories.findByStoreIdAndParentId(storeId, id) : List.of();
         // 누적 비용이 1건이라도 있으면 끄기만 할 수 있다 (04 설계 2.3)
         if (usage.countByCategoryIds(storeId, List.of(id)).getOrDefault(id, 0L) > 0) {
             throw new MoaException(ErrorCode.CATEGORY_IN_USE, "category has expenses: " + id);
         }
         rejectIfLastActiveTop(storeId, category);
+        children.forEach(categories::delete);
         categories.delete(category);
     }
 
