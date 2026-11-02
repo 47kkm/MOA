@@ -119,6 +119,17 @@ class CategoryServiceTest {
         assertFails(ErrorCode.CATEGORY_DEPTH, () -> categoryService.add(STORE_ID, beans.id(), "에티오피아"));
     }
 
+    // 꺼진 상위 아래에 켜진 하위가 생기지 않게 (2026-11-03 kei 결정)
+    @Test
+    @DisplayName("분류 추가 - 꺼진 상위 아래 → CATEGORY_PARENT_INACTIVE")
+    void addUnderInactiveParent() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        categoryService.add(STORE_ID, null, "임대료");
+        categoryService.deactivate(STORE_ID, food.id());
+
+        assertFails(ErrorCode.CATEGORY_PARENT_INACTIVE, () -> categoryService.add(STORE_ID, food.id(), "시럽"));
+    }
+
     // 상위끼리는 DB가 못 막고(04 설계 D2-4) 하위끼리는 DB도 막지만, 둘 다 코드가 먼저 409로 막는다
     @Test
     @DisplayName("분류 추가 - 형제 중복 → CATEGORY_NAME_DUPLICATE")
