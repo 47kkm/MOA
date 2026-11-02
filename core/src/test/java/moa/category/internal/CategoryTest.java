@@ -47,6 +47,17 @@ class CategoryTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    // store에서 배운 것: 공백만, 전각 공백만, 요청에 이름이 빠진 경우(null)도 빈 이름이다
+    @Test
+    @DisplayName("분류 추가 - 빈 이름 → 거부 (공백만 · 전각 공백만 · null 포함)")
+    void rejectsEmptyName() {
+        for (String empty : new String[] { "", "   ", "　", null }) {
+            assertThatThrownBy(() -> Category.top(STORE_ID, empty, 0))
+                    .as("name [%s]", empty)
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
     // id는 DB가 매긴다. 단위 테스트에는 DB가 없으므로 저장된 것처럼 id를 직접 넣는다
     private static Category saved(Category category, Long id) {
         ReflectionTestUtils.setField(category, "id", id);
