@@ -440,7 +440,7 @@ void on(ExpenseRegistered e) {
 | 분류 tree 조회 | 필수 | Given tree 있음 / When 조회 / Then 상위 → 하위 순서, 각 항목에 id·이름·경로·활성 여부 |
 | | | Given 비활성 분류 있음 / When 활성만 조회 / Then 비활성 제외 |
 | 분류 존재 확인 | 필수 | Given categoryId / When 확인 / Then 존재·활성 여부 반환 (expense가 비용 등록 시 호출) |
-| 분류 tree Markdown 내보내기 | 선택 | Given tree 있음 / When 내보내기 / Then 5.2 형식의 Markdown 문자열. Phase 2 기학습 자료 |
+| 분류 tree Markdown 내보내기 | 선택 | Given tree 있음 / When 내보내기 / Then 기획서 2.5 형식(제목 + 들여쓴 목록)의 Markdown 문자열. Phase 2 기학습 자료 |
 
 입력된 비용이 1건이라도 있는 분류는 삭제하지 않고 비활성화한다 (비용이 참조하는 분류가 사라지는 것을 막기 위해). 누적 0건인 분류만 삭제할 수 있다.
 
