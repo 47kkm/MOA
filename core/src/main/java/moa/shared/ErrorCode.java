@@ -12,6 +12,7 @@ public enum ErrorCode {
     STORE_NOT_FOUND(HttpStatus.NOT_FOUND),
     STORE_ALREADY_EXISTS(HttpStatus.CONFLICT),
 
+    CATEGORY_NAME_DUPLICATE(HttpStatus.CONFLICT),
     CATEGORY_DEPTH(HttpStatus.CONFLICT);
 
     private final HttpStatus status;

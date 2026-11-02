@@ -36,9 +36,11 @@ public class CategoryService {
             throw new MoaException(ErrorCode.CATEGORY_DEPTH, "categories have at most 2 levels");
         }
         int sortOrder = (int) categories.countByStoreIdAndParentId(storeId, parentId);
-        Category category = categories.save(parent == null
+        Category category = parent == null
                 ? Category.top(storeId, name, sortOrder)
-                : Category.childOf(parent, name, sortOrder));
+                : Category.childOf(parent, name, sortOrder);
+        rejectDuplicateName(storeId, parentId, category.getName());
+        categories.save(category);
         events.publishEvent(new CategoryAdded(storeId, category.getId(), category.getParentId(), category.getName()));
         return toInfo(category, parent);
     }
@@ -54,6 +56,13 @@ public class CategoryService {
                     .forEach(child -> result.add(toInfo(child, top)));
         });
         return result;
+    }
+
+    // 형제 = 같은 상위 아래. 상위끼리는 전체가 형제다. 꺼진 분류도 센다 (04 설계 2.3)
+    private void rejectDuplicateName(Long storeId, Long parentId, String name) {
+        if (categories.existsByStoreIdAndParentIdAndName(storeId, parentId, name)) {
+            throw new MoaException(ErrorCode.CATEGORY_NAME_DUPLICATE, "same name exists among siblings");
+        }
     }
 
     private Category find(Long storeId, Long id) {

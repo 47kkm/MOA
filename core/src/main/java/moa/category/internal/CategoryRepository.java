@@ -16,5 +16,7 @@ public interface CategoryRepository extends Repository<Category, Long> {
     // parentId가 null이면 상위 분류끼리 센다
     long countByStoreIdAndParentId(Long storeId, Long parentId);
 
+    boolean existsByStoreIdAndParentIdAndName(Long storeId, Long parentId, String name);
+
     List<Category> findByStoreId(Long storeId);
 }
