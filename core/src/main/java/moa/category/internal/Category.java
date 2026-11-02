@@ -11,6 +11,9 @@ import jakarta.persistence.Table;
 @Table(name = "categories", catalog = "category")
 public class Category {
 
+    // 상위 20개, 상위당 하위 20개. 꺼진 것도 센다. 세어 보는 일은 밖(응용 서비스·리스너)에서 (04 설계 2.3)
+    public static final int MAX_SIBLINGS = 20;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

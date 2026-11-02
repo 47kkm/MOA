@@ -43,11 +43,16 @@ class StoreRegisteredListener {
         for (CategoryTemplate.Node node : CategoryTemplate.NODES) {
             Category top = categories.findByStoreIdAndParentIdAndName(storeId, null, node.name()).orElse(null);
             if (top == null) {
+                // 상위가 20개면 이 상위와 그 하위는 건너뛴다
+                if (isFull(storeId, null)) {
+                    continue;
+                }
                 top = categories.save(Category.top(storeId, node.name(), nextSortOrder(storeId, null)));
                 created++;
             }
             for (String childName : node.children()) {
-                if (categories.existsByStoreIdAndParentIdAndName(storeId, top.getId(), childName)) {
+                if (categories.existsByStoreIdAndParentIdAndName(storeId, top.getId(), childName)
+                        || isFull(storeId, top.getId())) {
                     continue;
                 }
                 Category child = Category.childOf(top, childName, nextSortOrder(storeId, top.getId()));
@@ -61,6 +66,10 @@ class StoreRegisteredListener {
         }
         applications.save(new TemplateApplication(storeId, LocalDateTime.now(clock)));
         events.publishEvent(new DefaultCategoriesCreated(storeId, created));
+    }
+
+    private boolean isFull(Long storeId, Long parentId) {
+        return categories.countByStoreIdAndParentId(storeId, parentId) >= Category.MAX_SIBLINGS;
     }
 
     private int nextSortOrder(Long storeId, Long parentId) {

@@ -22,9 +22,6 @@ import moa.shared.MoaException;
 @Service
 public class CategoryService {
 
-    // 상위 20개, 상위당 하위 20개. 꺼진 것도 센다 (04 설계 2.3)
-    static final int MAX_SIBLINGS = 20;
-
     // 형제 안은 만든 순서 (04 설계 2.2 "분류 tree 조회")
     private static final Comparator<Category> SIBLING_ORDER = Comparator.comparingInt(Category::getSortOrder)
             .thenComparing(Category::getId);
@@ -46,9 +43,9 @@ public class CategoryService {
         if (parent != null && !parent.isTop()) {
             throw new MoaException(ErrorCode.CATEGORY_DEPTH, "categories have at most 2 levels");
         }
-        int siblings = (int) categories.countByStoreIdAndParentId(storeId, parentId);
-        if (siblings >= MAX_SIBLINGS) {
-            throw new MoaException(ErrorCode.CATEGORY_LIMIT, "at most " + MAX_SIBLINGS + " categories per level");
+        if (categories.countByStoreIdAndParentId(storeId, parentId) >= Category.MAX_SIBLINGS) {
+            throw new MoaException(ErrorCode.CATEGORY_LIMIT,
+                    "at most " + Category.MAX_SIBLINGS + " categories per level");
         }
         int sortOrder = nextSortOrder(storeId, parentId);
         Category category = parent == null
