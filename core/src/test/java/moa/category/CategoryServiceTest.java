@@ -1,7 +1,9 @@
 package moa.category;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,6 +15,8 @@ import org.springframework.modulith.test.AssertablePublishedEvents;
 
 import moa.TestcontainersConfiguration;
 import moa.category.CategoryEvents.CategoryAdded;
+import moa.shared.ErrorCode;
+import moa.shared.MoaException;
 
 /**
  * category 모듈만 띄우고 진짜 MySQL(Testcontainers)에 저장해 보는 통합 테스트 (04 설계 0.7).
@@ -65,5 +69,25 @@ class CategoryServiceTest {
         assertThat(categoryService.tree(STORE_ID, false))
                 .extracting(CategoryInfo::path)
                 .containsExactly("식자재", "식자재 > 원두", "식자재 > 시럽", "임대료");
+    }
+
+    @Test
+    @DisplayName("분류 추가 - 없는 상위 → NOT_FOUND")
+    void addUnderMissingParent() {
+        assertFails(ErrorCode.NOT_FOUND, () -> categoryService.add(STORE_ID, 999L, "원두"));
+    }
+
+    @Test
+    @DisplayName("분류 추가 - 하위 아래 추가 → CATEGORY_DEPTH")
+    void addUnderChild() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+
+        assertFails(ErrorCode.CATEGORY_DEPTH, () -> categoryService.add(STORE_ID, beans.id(), "에티오피아"));
+    }
+
+    private static void assertFails(ErrorCode code, ThrowingCallable call) {
+        assertThatThrownBy(call)
+                .isInstanceOfSatisfying(MoaException.class, e -> assertThat(e.getCode()).isEqualTo(code));
     }
 }
