@@ -34,11 +34,14 @@ public class Category {
         return new Category(parent.storeId, parent.id, validName(name), sortOrder);
     }
 
-    // 이름 규칙: 앞뒤 공백을 자른 뒤 비면 거부 (04 설계 2.3)
+    // 이름 규칙: 앞뒤 공백을 자른 뒤 1~20자 (04 설계 2.3)
     private static String validName(String name) {
         String stripped = name == null ? "" : name.strip();
         if (stripped.isEmpty()) {
             throw new IllegalArgumentException("name is required");
+        }
+        if (stripped.length() > 20) {
+            throw new IllegalArgumentException("name must be at most 20 characters");
         }
         return stripped;
     }
