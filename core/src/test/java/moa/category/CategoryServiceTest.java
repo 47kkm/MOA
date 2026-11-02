@@ -120,6 +120,16 @@ class CategoryServiceTest {
     }
 
     @Test
+    @DisplayName("분류 추가 - 꺼진 분류와 중복 → CATEGORY_NAME_DUPLICATE")
+    void addDuplicateOfInactive() {
+        categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+        categoryService.deactivate(STORE_ID, rent.id());
+
+        assertFails(ErrorCode.CATEGORY_NAME_DUPLICATE, () -> categoryService.add(STORE_ID, null, "임대료"));
+    }
+
+    @Test
     @DisplayName("분류 추가 - 상위 20개 → CATEGORY_LIMIT")
     void topLimit() {
         for (int i = 1; i <= 20; i++) {
