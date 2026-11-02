@@ -73,6 +73,10 @@ public class CategoryService {
     @Transactional
     public List<Long> deactivate(Long storeId, Long id) {
         Category category = find(storeId, id);
+        rejectIfLastActiveTop(storeId, category);
+        if (!category.isActive()) {
+            return List.of();
+        }
         category.deactivate();
         List<Long> deactivated = new ArrayList<>(List.of(id));
         if (category.isTop()) {
@@ -104,6 +108,14 @@ public class CategoryService {
     private void rejectDuplicateName(Long storeId, Long parentId, String name) {
         if (categories.existsByStoreIdAndParentIdAndName(storeId, parentId, name)) {
             throw new MoaException(ErrorCode.CATEGORY_NAME_DUPLICATE, "same name exists among siblings");
+        }
+    }
+
+    // 켜진 상위 분류는 항상 1개 이상 (04 설계 2.3). 끄거나 지우려는 것이 그 하나면 막는다
+    private void rejectIfLastActiveTop(Long storeId, Category category) {
+        if (category.isTop() && category.isActive()
+                && categories.countByStoreIdAndParentIdIsNullAndActiveTrue(storeId) == 1) {
+            throw new MoaException(ErrorCode.CATEGORY_LAST_ACTIVE, "at least one active top category is required");
         }
     }
 

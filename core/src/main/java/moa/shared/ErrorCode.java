@@ -14,7 +14,8 @@ public enum ErrorCode {
 
     CATEGORY_NAME_DUPLICATE(HttpStatus.CONFLICT),
     CATEGORY_LIMIT(HttpStatus.CONFLICT),
-    CATEGORY_DEPTH(HttpStatus.CONFLICT);
+    CATEGORY_DEPTH(HttpStatus.CONFLICT),
+    CATEGORY_LAST_ACTIVE(HttpStatus.CONFLICT);
 
     private final HttpStatus status;
 
