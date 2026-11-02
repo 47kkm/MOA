@@ -13,7 +13,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.AssertablePublishedEvents;
@@ -29,7 +32,7 @@ import moa.shared.MoaException;
  * category 모듈만 띄우고 진짜 MySQL(Testcontainers)에 저장해 보는 통합 테스트 (04 설계 0.7).
  */
 @ApplicationModuleTest
-@Import(TestcontainersConfiguration.class)
+@Import({ TestcontainersConfiguration.class, CategoryServiceTest.Fakes.class })
 class CategoryServiceTest {
 
     static final Long STORE_ID = 1L;
@@ -38,11 +41,15 @@ class CategoryServiceTest {
     CategoryService categoryService;
 
     @Autowired
+    FakeCategoryUsage usage;
+
+    @Autowired
     JdbcTemplate jdbc;
 
     @BeforeEach
     void clean() {
         jdbc.update("DELETE FROM category.categories");
+        usage.clear();
     }
 
     @Test
@@ -325,6 +332,16 @@ class CategoryServiceTest {
         assertFails(ErrorCode.CATEGORY_LAST_ACTIVE, () -> categoryService.delete(STORE_ID, food.id()));
     }
 
+    @Test
+    @DisplayName("분류 삭제 - 사용된 분류 → CATEGORY_IN_USE")
+    void deleteInUse() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        usage.set(beans.id(), 3);
+
+        assertFails(ErrorCode.CATEGORY_IN_USE, () -> categoryService.delete(STORE_ID, beans.id()));
+    }
+
     // 꺼진 것까지 tree 순서대로 "경로 → 켜짐 여부"
     private Map<String, Boolean> activeByPath() {
         Map<String, Boolean> result = new LinkedHashMap<>();
@@ -335,5 +352,16 @@ class CategoryServiceTest {
     private static void assertFails(ErrorCode code, ThrowingCallable call) {
         assertThatThrownBy(call)
                 .isInstanceOfSatisfying(MoaException.class, e -> assertThat(e.getCode()).isEqualTo(code));
+    }
+
+    // 비용 건수는 가짜가 대신 답한다. main의 NoExpenseYet보다 먼저 쓰이게 @Primary
+    @TestConfiguration(proxyBeanMethods = false)
+    static class Fakes {
+
+        @Bean
+        @Primary
+        FakeCategoryUsage fakeCategoryUsage() {
+            return new FakeCategoryUsage();
+        }
     }
 }
