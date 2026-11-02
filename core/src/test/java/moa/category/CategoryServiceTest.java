@@ -86,6 +86,32 @@ class CategoryServiceTest {
         assertFails(ErrorCode.CATEGORY_DEPTH, () -> categoryService.add(STORE_ID, beans.id(), "에티오피아"));
     }
 
+    // 상위끼리는 DB가 못 막고(04 설계 D2-4) 하위끼리는 DB도 막지만, 둘 다 코드가 먼저 409로 막는다
+    @Test
+    @DisplayName("분류 추가 - 형제 중복 → CATEGORY_NAME_DUPLICATE")
+    void addDuplicateSibling() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        categoryService.add(STORE_ID, food.id(), "원두");
+
+        assertFails(ErrorCode.CATEGORY_NAME_DUPLICATE, () -> categoryService.add(STORE_ID, null, " 식자재 "));
+        assertFails(ErrorCode.CATEGORY_NAME_DUPLICATE, () -> categoryService.add(STORE_ID, food.id(), "원두"));
+    }
+
+    @Test
+    @DisplayName("분류 추가 - 다른 상위와는 중복 허용")
+    void sameNameUnderDifferentParents() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo labor = categoryService.add(STORE_ID, null, "인건비");
+        categoryService.add(STORE_ID, food.id(), "기타");
+
+        categoryService.add(STORE_ID, labor.id(), "기타");
+        categoryService.add(STORE_ID, null, "기타");
+
+        assertThat(categoryService.tree(STORE_ID, false))
+                .extracting(CategoryInfo::path)
+                .contains("식자재 > 기타", "인건비 > 기타", "기타");
+    }
+
     private static void assertFails(ErrorCode code, ThrowingCallable call) {
         assertThatThrownBy(call)
                 .isInstanceOfSatisfying(MoaException.class, e -> assertThat(e.getCode()).isEqualTo(code));
