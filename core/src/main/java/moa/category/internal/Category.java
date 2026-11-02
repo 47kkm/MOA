@@ -26,7 +26,11 @@ public class Category {
         return new Category(storeId, null, name, sortOrder);
     }
 
+    // 2단계까지 (04 설계 2.3). 응용 서비스가 먼저 isTop()으로 보고 409를 내므로, 여기는 마지막 방어선이다
     public static Category childOf(Category parent, String name, int sortOrder) {
+        if (!parent.isTop()) {
+            throw new IllegalArgumentException("parent must be a top category");
+        }
         return new Category(parent.storeId, parent.id, name, sortOrder);
     }
 
