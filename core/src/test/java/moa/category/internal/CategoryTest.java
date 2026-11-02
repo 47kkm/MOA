@@ -88,6 +88,16 @@ class CategoryTest {
         assertThat(category.rename("재료비")).isTrue();
     }
 
+    @Test
+    @DisplayName("분류 비활성화 - 켜짐에서 꺼짐")
+    void deactivates() {
+        Category category = Category.top(STORE_ID, "식자재", 0);
+
+        category.deactivate();
+
+        assertThat(category.isActive()).isFalse();
+    }
+
     // id는 DB가 매긴다. 단위 테스트에는 DB가 없으므로 저장된 것처럼 id를 직접 넣는다
     private static Category saved(Category category, Long id) {
         ReflectionTestUtils.setField(category, "id", id);
