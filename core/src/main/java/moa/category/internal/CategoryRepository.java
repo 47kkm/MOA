@@ -1,6 +1,7 @@
 package moa.category.internal;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.repository.Repository;
 
@@ -8,6 +9,9 @@ import org.springframework.data.repository.Repository;
 public interface CategoryRepository extends Repository<Category, Long> {
 
     Category save(Category category);
+
+    // 다른 매장의 분류는 없는 것과 같다
+    Optional<Category> findByIdAndStoreId(Long id, Long storeId);
 
     // parentId가 null이면 상위 분류끼리 센다
     long countByStoreIdAndParentId(Long storeId, Long parentId);

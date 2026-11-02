@@ -1,5 +1,6 @@
 package moa.category;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
@@ -14,6 +15,10 @@ import moa.category.internal.CategoryRepository;
 @Service
 public class CategoryService {
 
+    // 형제 안은 만든 순서 (04 설계 2.2 "분류 tree 조회")
+    private static final Comparator<Category> SIBLING_ORDER = Comparator.comparingInt(Category::getSortOrder)
+            .thenComparing(Category::getId);
+
     private final CategoryRepository categories;
     private final ApplicationEventPublisher events;
 
@@ -24,22 +29,31 @@ public class CategoryService {
 
     @Transactional
     public CategoryInfo add(Long storeId, Long parentId, String name) {
-        int sortOrder = (int) categories.countByStoreIdAndParentId(storeId, null);
-        Category category = categories.save(Category.top(storeId, name, sortOrder));
+        Category parent = parentId == null ? null : categories.findByIdAndStoreId(parentId, storeId).orElseThrow();
+        int sortOrder = (int) categories.countByStoreIdAndParentId(storeId, parentId);
+        Category category = categories.save(parent == null
+                ? Category.top(storeId, name, sortOrder)
+                : Category.childOf(parent, name, sortOrder));
         events.publishEvent(new CategoryAdded(storeId, category.getId(), category.getParentId(), category.getName()));
-        return toInfo(category);
+        return toInfo(category, parent);
     }
 
+    // 상위 → 그 하위 순서로 펼친다
     @Transactional(readOnly = true)
     public List<CategoryInfo> tree(Long storeId, boolean includeInactive) {
-        return categories.findByStoreId(storeId).stream()
-                .sorted(Comparator.comparingInt(Category::getSortOrder))
-                .map(CategoryService::toInfo)
-                .toList();
+        List<Category> all = categories.findByStoreId(storeId);
+        List<CategoryInfo> result = new ArrayList<>();
+        all.stream().filter(Category::isTop).sorted(SIBLING_ORDER).forEach(top -> {
+            result.add(toInfo(top, null));
+            all.stream().filter(c -> c.isChildOf(top)).sorted(SIBLING_ORDER)
+                    .forEach(child -> result.add(toInfo(child, top)));
+        });
+        return result;
     }
 
-    private static CategoryInfo toInfo(Category category) {
-        return new CategoryInfo(category.getId(), category.getParentId(), category.getName(), category.getName(),
+    private static CategoryInfo toInfo(Category category, Category parent) {
+        String path = parent == null ? category.getName() : parent.getName() + " > " + category.getName();
+        return new CategoryInfo(category.getId(), category.getParentId(), category.getName(), path,
                 category.isActive(), category.getSortOrder(), 0);
     }
 }
