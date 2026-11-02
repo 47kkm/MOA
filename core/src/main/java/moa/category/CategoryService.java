@@ -107,8 +107,11 @@ public class CategoryService {
     public void delete(Long storeId, Long id) {
         Category category = find(storeId, id);
         List<Category> children = category.isTop() ? categories.findByStoreIdAndParentId(storeId, id) : List.of();
-        // 누적 비용이 1건이라도 있으면 끄기만 할 수 있다 (04 설계 2.3)
-        if (usage.countByCategoryIds(storeId, List.of(id)).getOrDefault(id, 0L) > 0) {
+        // 자신과 하위의 누적 비용을 합쳐 1건이라도 있으면 아무것도 지우지 않는다. 끄기만 할 수 있다 (04 설계 2.3)
+        List<Long> ids = new ArrayList<>(List.of(id));
+        children.forEach(child -> ids.add(child.getId()));
+        long expenses = usage.countByCategoryIds(storeId, ids).values().stream().mapToLong(Long::longValue).sum();
+        if (expenses > 0) {
             throw new MoaException(ErrorCode.CATEGORY_IN_USE, "category has expenses: " + id);
         }
         rejectIfLastActiveTop(storeId, category);
