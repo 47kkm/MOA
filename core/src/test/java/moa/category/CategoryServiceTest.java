@@ -257,6 +257,34 @@ class CategoryServiceTest {
         assertThat(events.ofType(CategoryDeactivated.class)).hasSize(1);
     }
 
+    @Test
+    @DisplayName("분류 활성화 - 상위 켜기 → 하위는 여전히 꺼짐")
+    void activateTopLeavesChildrenOff() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        categoryService.add(STORE_ID, food.id(), "원두");
+        categoryService.add(STORE_ID, null, "임대료");
+        categoryService.deactivate(STORE_ID, food.id());
+
+        CategoryInfo activated = categoryService.activate(STORE_ID, food.id());
+
+        assertThat(activated.active()).isTrue();
+        assertThat(activeByPath()).containsExactly(
+                entry("식자재", true), entry("식자재 > 원두", false), entry("임대료", true));
+    }
+
+    @Test
+    @DisplayName("분류 활성화 - 상위 켜진 하위 → 켜짐")
+    void activateChildUnderActiveTop() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        categoryService.deactivate(STORE_ID, beans.id());
+
+        CategoryInfo activated = categoryService.activate(STORE_ID, beans.id());
+
+        assertThat(activated.path()).isEqualTo("식자재 > 원두");
+        assertThat(activeByPath()).containsEntry("식자재 > 원두", true);
+    }
+
     // 꺼진 것까지 tree 순서대로 "경로 → 켜짐 여부"
     private Map<String, Boolean> activeByPath() {
         Map<String, Boolean> result = new LinkedHashMap<>();
