@@ -131,26 +131,6 @@ public class CategoryService {
         return includeInactive ? result : result.stream().filter(CategoryInfo::active).toList();
     }
 
-    // 형제 = 같은 상위 아래. 상위끼리는 전체가 형제다. 꺼진 분류도 센다 (04 설계 2.3)
-    private void rejectDuplicateName(Long storeId, Long parentId, String name) {
-        if (categories.existsByStoreIdAndParentIdAndName(storeId, parentId, name)) {
-            throw new MoaException(ErrorCode.CATEGORY_NAME_DUPLICATE, "same name exists among siblings");
-        }
-    }
-
-    // 켜진 상위 분류는 항상 1개 이상 (04 설계 2.3). 끄거나 지우려는 것이 그 하나면 막는다
-    private void rejectIfLastActiveTop(Long storeId, Category category) {
-        if (category.isTop() && category.isActive()
-                && categories.countByStoreIdAndParentIdIsNullAndActiveTrue(storeId) == 1) {
-            throw new MoaException(ErrorCode.CATEGORY_LAST_ACTIVE, "at least one active top category is required");
-        }
-    }
-
-    private Category find(Long storeId, Long id) {
-        return categories.findByIdAndStoreId(id, storeId)
-                .orElseThrow(() -> new MoaException(ErrorCode.NOT_FOUND, "category not found: " + id));
-    }
-
     // expense가 비용 등록·재분류 때 부른다. 없는 분류도 false (04 설계 2.2 "분류 존재 확인")
     @Transactional(readOnly = true)
     public boolean isActive(Long storeId, Long categoryId) {
@@ -170,6 +150,26 @@ public class CategoryService {
             }
         }
         return result;
+    }
+
+    // 형제 = 같은 상위 아래. 상위끼리는 전체가 형제다. 꺼진 분류도 센다 (04 설계 2.3)
+    private void rejectDuplicateName(Long storeId, Long parentId, String name) {
+        if (categories.existsByStoreIdAndParentIdAndName(storeId, parentId, name)) {
+            throw new MoaException(ErrorCode.CATEGORY_NAME_DUPLICATE, "same name exists among siblings");
+        }
+    }
+
+    // 켜진 상위 분류는 항상 1개 이상 (04 설계 2.3). 끄거나 지우려는 것이 그 하나면 막는다
+    private void rejectIfLastActiveTop(Long storeId, Category category) {
+        if (category.isTop() && category.isActive()
+                && categories.countByStoreIdAndParentIdIsNullAndActiveTrue(storeId) == 1) {
+            throw new MoaException(ErrorCode.CATEGORY_LAST_ACTIVE, "at least one active top category is required");
+        }
+    }
+
+    private Category find(Long storeId, Long id) {
+        return categories.findByIdAndStoreId(id, storeId)
+                .orElseThrow(() -> new MoaException(ErrorCode.NOT_FOUND, "category not found: " + id));
     }
 
     private Category parentOf(Category category) {
