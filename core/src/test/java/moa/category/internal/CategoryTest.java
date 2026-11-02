@@ -58,6 +58,16 @@ class CategoryTest {
         }
     }
 
+    @Test
+    @DisplayName("분류 추가 - 21자 → 거부 (20자는 허용)")
+    void rejectsNameOver20() {
+        String twenty = "가".repeat(20);
+
+        assertThat(Category.top(STORE_ID, twenty, 0).getName()).hasSize(20);
+        assertThatThrownBy(() -> Category.top(STORE_ID, twenty + "가", 0))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     // id는 DB가 매긴다. 단위 테스트에는 DB가 없으므로 저장된 것처럼 id를 직접 넣는다
     private static Category saved(Category category, Long id) {
         ReflectionTestUtils.setField(category, "id", id);
