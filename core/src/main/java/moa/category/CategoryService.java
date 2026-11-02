@@ -66,14 +66,11 @@ public class CategoryService {
         Category category = find(storeId, id);
         String oldName = category.getName();
         String newName = Category.validName(name);
-        // 지금 이름은 형제 중 같은 이름에 걸리므로 중복 검사 전에 거른다. 아무 일 없고 이벤트도 없다 (04 설계 2.2)
+        // 공백을 자르고 보니 지금 이름과 같으면 바꿀 것이 없다. 아무 일 없고 이벤트도 없다 (04 설계 2.2)
         if (newName.equals(oldName)) {
             return toInfo(category, parentOf(category));
         }
-        // 정렬 규칙이 대소문자를 구분하지 않아 "Coffee" → "coffee"에서 자기 자신이 잡힌다. 자신은 빼고 찾는다 (04 설계 D2-13)
-        if (categories.existsByStoreIdAndParentIdAndNameAndIdNot(storeId, category.getParentId(), newName, id)) {
-            throw new MoaException(ErrorCode.CATEGORY_NAME_DUPLICATE, "same name exists among siblings");
-        }
+        rejectDuplicateName(storeId, category.getParentId(), newName, id);
         category.rename(newName);
         events.publishEvent(new CategoryRenamed(storeId, id, oldName, newName));
         return toInfo(category, parentOf(category));
@@ -164,6 +161,13 @@ public class CategoryService {
     // 형제 = 같은 상위 아래. 상위끼리는 전체가 형제다. 꺼진 분류도 센다 (04 설계 2.3)
     private void rejectDuplicateName(Long storeId, Long parentId, String name) {
         if (categories.existsByStoreIdAndParentIdAndName(storeId, parentId, name)) {
+            throw new MoaException(ErrorCode.CATEGORY_NAME_DUPLICATE, "same name exists among siblings");
+        }
+    }
+
+    // 이름 변경용. 정렬 규칙이 대소문자를 구분하지 않아 "Coffee" → "coffee"에서 자기 자신이 잡힌다. 자신은 빼고 찾는다 (04 설계 D2-13)
+    private void rejectDuplicateName(Long storeId, Long parentId, String name, Long exceptId) {
+        if (categories.existsByStoreIdAndParentIdAndNameAndIdNot(storeId, parentId, name, exceptId)) {
             throw new MoaException(ErrorCode.CATEGORY_NAME_DUPLICATE, "same name exists among siblings");
         }
     }

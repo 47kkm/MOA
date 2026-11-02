@@ -224,7 +224,7 @@ class CategoryServiceTest {
         assertFails(ErrorCode.CATEGORY_NAME_DUPLICATE, () -> categoryService.rename(STORE_ID, rent.id(), "식자재"));
     }
 
-    // 지금 이름도 "형제 중 같은 이름"에 걸리므로, 중복 검사보다 먼저 걸러야 한다
+    // 공백만 다르면 바뀐 것이 없다. 중복 검사까지 가지 않고 이벤트도 없다
     @Test
     @DisplayName("분류 이름 변경 - 같은 이름 → 200, 이벤트 없음")
     void renameToSameName(AssertablePublishedEvents events) {
