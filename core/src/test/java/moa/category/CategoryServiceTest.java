@@ -236,6 +236,24 @@ class CategoryServiceTest {
         assertThat(events.ofType(CategoryRenamed.class)).isEmpty();
     }
 
+    // 정렬 규칙이 대소문자를 구분하지 않아, 자기 자신이 "형제 중 같은 이름"으로 잡히면 안 된다
+    @Test
+    @DisplayName("분류 이름 변경 - 대소문자만 바꿈 → 바뀜, CategoryRenamed 발행")
+    void renameCaseOnly(AssertablePublishedEvents events) {
+        categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo coffee = categoryService.add(STORE_ID, null, "Coffee");
+
+        CategoryInfo renamed = categoryService.rename(STORE_ID, coffee.id(), "coffee");
+
+        assertThat(renamed.name()).isEqualTo("coffee");
+        assertThat(categoryService.tree(STORE_ID, false))
+                .extracting(CategoryInfo::name)
+                .containsExactly("식자재", "coffee");
+        assertThat(events)
+                .contains(CategoryRenamed.class)
+                .matching(e -> e.oldName().equals("Coffee") && e.newName().equals("coffee"));
+    }
+
     @Test
     @DisplayName("분류 비활성화 - 하위 없는 상위 → 꺼짐, CategoryDeactivated 발행")
     void deactivateTop(AssertablePublishedEvents events) {
