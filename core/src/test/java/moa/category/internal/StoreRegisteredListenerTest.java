@@ -158,6 +158,18 @@ class StoreRegisteredListenerTest {
                 .matching(DefaultCategoriesCreated::count, 5);
     }
 
+    // 템플릿으로 만든 분류라고 따로 표시하지 않는다. 사장님이 만든 것과 같은 규칙 (04 설계 2.3)
+    @Test
+    @DisplayName("분류 삭제 - 기본 템플릿 분류 0건 → 삭제")
+    void deleteTemplateCategory() {
+        storeRegistered(StoreType.CAFE);
+
+        categoryService.delete(STORE_ID, idOf("식자재 > 원두"));
+        categoryService.delete(STORE_ID, idOf("마케팅"));
+
+        assertThat(paths()).hasSize(14).doesNotContain("식자재 > 원두", "마케팅");
+    }
+
     // store가 커밋한 뒤에 리스너가 돈다(04 설계 0.3). 테스트도 트랜잭션 안에서 발행하고 커밋한다
     private void storeRegistered(StoreType type) {
         tx.executeWithoutResult(status -> publisher.publishEvent(
