@@ -375,6 +375,7 @@ class CategoryServiceTest {
         assertThat(activeByPath()).isEqualTo(before);
     }
 
+    // 켜진 상위가 식자재 하나뿐이어도 하위는 지울 수 있다. 켜진 상위 하나를 지키는 규칙은 켜진 상위에만 걸린다
     @Test
     @DisplayName("분류 삭제 - 0건 하위 → 삭제")
     void deleteChild() {
@@ -454,6 +455,19 @@ class CategoryServiceTest {
         categoryService.deactivate(STORE_ID, rent.id());
 
         assertFails(ErrorCode.CATEGORY_LAST_ACTIVE, () -> categoryService.delete(STORE_ID, food.id()));
+    }
+
+    // 지우려는 것이 꺼진 상위면 켜진 상위 수는 그대로라 막지 않는다
+    @Test
+    @DisplayName("분류 삭제 - 꺼진 상위는 켜진 상위가 하나뿐이어도 → 삭제")
+    void deleteInactiveTopBesideOnlyActiveTop() {
+        categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+        categoryService.deactivate(STORE_ID, rent.id());
+
+        categoryService.delete(STORE_ID, rent.id());
+
+        assertThat(activeByPath()).containsOnlyKeys("식자재");
     }
 
     @Test
