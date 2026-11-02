@@ -3,6 +3,7 @@ package moa.category;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -117,17 +118,18 @@ public class CategoryService {
         categories.delete(category);
     }
 
-    // 상위 → 그 하위 순서로 펼친다
+    // 상위 → 그 하위 순서로 펼친다. 누적 비용 건수는 한 번에 받는다 (04 설계 2.2)
     @Transactional(readOnly = true)
     public List<CategoryInfo> tree(Long storeId, boolean includeInactive) {
         List<Category> all = categories.findByStoreId(storeId);
+        Map<Long, Long> counts = usage.countByCategoryIds(storeId, all.stream().map(Category::getId).toList());
         List<CategoryInfo> result = new ArrayList<>();
         all.stream().filter(Category::isTop).sorted(SIBLING_ORDER).forEach(top -> {
-            result.add(toInfo(top, null));
+            result.add(toInfo(top, null, counts));
             all.stream().filter(c -> c.isChildOf(top)).sorted(SIBLING_ORDER)
-                    .forEach(child -> result.add(toInfo(child, top)));
+                    .forEach(child -> result.add(toInfo(child, top, counts)));
         });
-        return result;
+        return includeInactive ? result : result.stream().filter(CategoryInfo::active).toList();
     }
 
     // 형제 = 같은 상위 아래. 상위끼리는 전체가 형제다. 꺼진 분류도 센다 (04 설계 2.3)
@@ -155,8 +157,12 @@ public class CategoryService {
     }
 
     private static CategoryInfo toInfo(Category category, Category parent) {
+        return toInfo(category, parent, Map.of());
+    }
+
+    private static CategoryInfo toInfo(Category category, Category parent, Map<Long, Long> expenseCounts) {
         String path = parent == null ? category.getName() : parent.getName() + " > " + category.getName();
         return new CategoryInfo(category.getId(), category.getParentId(), category.getName(), path,
-                category.isActive(), category.getSortOrder(), 0);
+                category.isActive(), category.getSortOrder(), expenseCounts.getOrDefault(category.getId(), 0L));
     }
 }
