@@ -379,6 +379,36 @@ class CategoryServiceTest {
                 .containsExactly("식자재", "식자재 > 원두");
     }
 
+    @Test
+    @DisplayName("분류 존재 확인 - 켜진 분류 → true, 꺼진·없는 분류 → false")
+    void isActive() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo milk = categoryService.add(STORE_ID, food.id(), "유제품");
+        categoryService.deactivate(STORE_ID, milk.id());
+
+        assertThat(categoryService.isActive(STORE_ID, beans.id())).isTrue();
+        assertThat(categoryService.isActive(STORE_ID, milk.id())).isFalse();
+        assertThat(categoryService.isActive(STORE_ID, 999L)).isFalse();
+        assertThat(categoryService.isActive(2L, beans.id())).as("다른 매장").isFalse();
+    }
+
+    // expense(비용 목록의 분류 경로)와 report(분류별 집계 이름)가 쓴다 (04 설계 2.7)
+    @Test
+    @DisplayName("분류 정보 - 요청한 ID의 경로, 건수는 0, 없는 ID는 빠짐")
+    void infoOf() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+        usage.set(beans.id(), 5);
+
+        Map<Long, CategoryInfo> infos = categoryService.infoOf(STORE_ID, List.of(beans.id(), rent.id(), 999L));
+
+        assertThat(infos).containsOnlyKeys(beans.id(), rent.id());
+        assertThat(infos.get(beans.id()).path()).isEqualTo("식자재 > 원두");
+        assertThat(infos.get(beans.id()).expenseCount()).isZero();
+    }
+
     // 꺼진 것까지 tree 순서대로 "경로 → 켜짐 여부"
     private Map<String, Boolean> activeByPath() {
         Map<String, Boolean> result = new LinkedHashMap<>();
