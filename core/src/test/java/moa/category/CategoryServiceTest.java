@@ -50,4 +50,20 @@ class CategoryServiceTest {
                 .contains(CategoryAdded.class)
                 .matching(CategoryAdded::categoryId, added.id());
     }
+
+    @Test
+    @DisplayName("분류 추가 - 하위 추가 → 그 상위 아래 끝에, 경로 \"식자재 > 시럽\"")
+    void addChild() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        categoryService.add(STORE_ID, null, "임대료");
+        categoryService.add(STORE_ID, food.id(), "원두");
+
+        CategoryInfo syrup = categoryService.add(STORE_ID, food.id(), "시럽");
+
+        assertThat(syrup.parentId()).isEqualTo(food.id());
+        assertThat(syrup.path()).isEqualTo("식자재 > 시럽");
+        assertThat(categoryService.tree(STORE_ID, false))
+                .extracting(CategoryInfo::path)
+                .containsExactly("식자재", "식자재 > 원두", "식자재 > 시럽", "임대료");
+    }
 }
