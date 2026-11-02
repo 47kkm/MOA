@@ -285,6 +285,15 @@ class CategoryServiceTest {
     @DisplayName("분류 비활성화 - 마지막 상위 → CATEGORY_LAST_ACTIVE")
     void deactivateLastActiveTop() {
         CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+
+        assertFails(ErrorCode.CATEGORY_LAST_ACTIVE, () -> categoryService.deactivate(STORE_ID, food.id()));
+    }
+
+    // 상위가 둘이어도 하나가 꺼져 있으면 켜진 것은 하나다. 전체 수가 아니라 켜진 수를 센다
+    @Test
+    @DisplayName("분류 비활성화 - 꺼진 상위가 있어도 켜진 상위가 하나뿐 → CATEGORY_LAST_ACTIVE")
+    void deactivateOnlyActiveTopBesideInactive() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
         CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
         categoryService.deactivate(STORE_ID, rent.id());
 
@@ -400,6 +409,16 @@ class CategoryServiceTest {
     @DisplayName("분류 삭제 - 마지막 상위 → CATEGORY_LAST_ACTIVE")
     void deleteLastActiveTop() {
         CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+
+        assertFails(ErrorCode.CATEGORY_LAST_ACTIVE, () -> categoryService.delete(STORE_ID, food.id()));
+    }
+
+    @Test
+    @DisplayName("분류 삭제 - 꺼진 상위가 있어도 켜진 상위가 하나뿐 → CATEGORY_LAST_ACTIVE")
+    void deleteOnlyActiveTopBesideInactive() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+        categoryService.deactivate(STORE_ID, rent.id());
 
         assertFails(ErrorCode.CATEGORY_LAST_ACTIVE, () -> categoryService.delete(STORE_ID, food.id()));
     }
