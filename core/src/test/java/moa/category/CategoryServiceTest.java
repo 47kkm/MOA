@@ -86,6 +86,24 @@ class CategoryServiceTest {
                 .containsExactly("식자재", "식자재 > 원두", "식자재 > 시럽", "임대료");
     }
 
+    // 형제 수를 새 순서로 쓰면, 앞쪽 형제를 지운 뒤 순서 번호가 겹쳐 중간에 끼어든다
+    @Test
+    @DisplayName("분류 추가 - 앞쪽 형제를 지운 뒤 추가해도 끝에")
+    void addAfterDeletingEarlierSiblings() {
+        CategoryInfo a = categoryService.add(STORE_ID, null, "가");
+        CategoryInfo b = categoryService.add(STORE_ID, null, "나");
+        categoryService.add(STORE_ID, null, "다");
+        categoryService.add(STORE_ID, null, "라");
+        categoryService.delete(STORE_ID, a.id());
+        categoryService.delete(STORE_ID, b.id());
+
+        categoryService.add(STORE_ID, null, "마");
+
+        assertThat(categoryService.tree(STORE_ID, false))
+                .extracting(CategoryInfo::name)
+                .containsExactly("다", "라", "마");
+    }
+
     @Test
     @DisplayName("분류 추가 - 없는 상위 → NOT_FOUND")
     void addUnderMissingParent() {
