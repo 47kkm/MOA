@@ -360,6 +360,21 @@ class CategoryServiceTest {
         assertThat(activeByPath()).containsEntry("식자재 > 원두", true);
     }
 
+    // 켜진 걸 켜도 아무 일 없다 (04 설계 2.3). 꺼진 하위도 그대로
+    @Test
+    @DisplayName("분류 활성화 - 이미 켜짐 → 아무 일 없음")
+    void activateAlreadyActive() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        categoryService.deactivate(STORE_ID, beans.id());
+        Map<String, Boolean> before = activeByPath();
+
+        CategoryInfo activated = categoryService.activate(STORE_ID, food.id());
+
+        assertThat(activated.active()).isTrue();
+        assertThat(activeByPath()).isEqualTo(before);
+    }
+
     @Test
     @DisplayName("분류 삭제 - 0건 하위 → 삭제")
     void deleteChild() {
