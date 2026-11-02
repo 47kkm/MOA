@@ -99,6 +99,12 @@ public class CategoryService {
         return toInfo(category, parentOf(category));
     }
 
+    // 이벤트 없음 (04 설계 D2-6)
+    @Transactional
+    public void delete(Long storeId, Long id) {
+        categories.delete(find(storeId, id));
+    }
+
     // 상위 → 그 하위 순서로 펼친다
     @Transactional(readOnly = true)
     public List<CategoryInfo> tree(Long storeId, boolean includeInactive) {

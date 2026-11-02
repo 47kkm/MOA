@@ -10,6 +10,8 @@ public interface CategoryRepository extends Repository<Category, Long> {
 
     Category save(Category category);
 
+    void delete(Category category);
+
     // 다른 매장의 분류는 없는 것과 같다
     Optional<Category> findByIdAndStoreId(Long id, Long storeId);
 
