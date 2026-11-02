@@ -1,5 +1,7 @@
 package moa.category;
 
+import java.util.List;
+
 public final class CategoryEvents {
 
     private CategoryEvents() {
@@ -11,5 +13,9 @@ public final class CategoryEvents {
 
     // 같은 이름으로 바꾸면 발행하지 않는다
     public record CategoryRenamed(Long storeId, Long categoryId, String oldName, String newName) {
+    }
+
+    // 상위를 끄면 함께 꺼진 하위 ID도 들어 있다
+    public record CategoryDeactivated(Long storeId, List<Long> categoryIds) {
     }
 }

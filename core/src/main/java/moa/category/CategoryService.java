@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import moa.category.CategoryEvents.CategoryAdded;
+import moa.category.CategoryEvents.CategoryDeactivated;
 import moa.category.CategoryEvents.CategoryRenamed;
 import moa.category.internal.Category;
 import moa.category.internal.CategoryRepository;
@@ -66,6 +67,24 @@ public class CategoryService {
         category.rename(newName);
         events.publishEvent(new CategoryRenamed(storeId, id, oldName, newName));
         return toInfo(category, parentOf(category));
+    }
+
+    // 상위를 끄면 하위도 같은 트랜잭션에서 끈다 (04 설계 D2-7). 돌려주는 것은 이번에 꺼진 ID 전부
+    @Transactional
+    public List<Long> deactivate(Long storeId, Long id) {
+        Category category = find(storeId, id);
+        category.deactivate();
+        List<Long> deactivated = new ArrayList<>(List.of(id));
+        if (category.isTop()) {
+            for (Category child : categories.findByStoreIdAndParentId(storeId, id)) {
+                if (child.isActive()) {
+                    child.deactivate();
+                    deactivated.add(child.getId());
+                }
+            }
+        }
+        events.publishEvent(new CategoryDeactivated(storeId, deactivated));
+        return deactivated;
     }
 
     // 상위 → 그 하위 순서로 펼친다
