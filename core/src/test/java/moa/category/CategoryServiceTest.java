@@ -112,6 +112,27 @@ class CategoryServiceTest {
                 .contains("식자재 > 기타", "인건비 > 기타", "기타");
     }
 
+    @Test
+    @DisplayName("분류 추가 - 상위 20개 → CATEGORY_LIMIT")
+    void topLimit() {
+        for (int i = 1; i <= 20; i++) {
+            categoryService.add(STORE_ID, null, "상위" + i);
+        }
+
+        assertFails(ErrorCode.CATEGORY_LIMIT, () -> categoryService.add(STORE_ID, null, "상위21"));
+    }
+
+    @Test
+    @DisplayName("분류 추가 - 하위 20개 → CATEGORY_LIMIT")
+    void childLimit() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        for (int i = 1; i <= 20; i++) {
+            categoryService.add(STORE_ID, food.id(), "하위" + i);
+        }
+
+        assertFails(ErrorCode.CATEGORY_LIMIT, () -> categoryService.add(STORE_ID, food.id(), "하위21"));
+    }
+
     private static void assertFails(ErrorCode code, ThrowingCallable call) {
         assertThatThrownBy(call)
                 .isInstanceOfSatisfying(MoaException.class, e -> assertThat(e.getCode()).isEqualTo(code));
