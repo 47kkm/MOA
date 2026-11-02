@@ -78,6 +78,16 @@ class CategoryTest {
         assertThat(category.getName()).isEqualTo("재료비");
     }
 
+    // 응용 서비스는 false를 보고 이벤트를 내지 않는다 (04 설계 2.2)
+    @Test
+    @DisplayName("분류 이름 변경 - 같은 이름 → 변경 없음")
+    void renameToSameName() {
+        Category category = Category.top(STORE_ID, "식자재", 0);
+
+        assertThat(category.rename(" 식자재 ")).isFalse();
+        assertThat(category.rename("재료비")).isTrue();
+    }
+
     // id는 DB가 매긴다. 단위 테스트에는 DB가 없으므로 저장된 것처럼 id를 직접 넣는다
     private static Category saved(Category category, Long id) {
         ReflectionTestUtils.setField(category, "id", id);
