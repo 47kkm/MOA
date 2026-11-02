@@ -285,6 +285,28 @@ class CategoryServiceTest {
         assertThat(activeByPath()).containsEntry("식자재 > 원두", true);
     }
 
+    @Test
+    @DisplayName("분류 삭제 - 0건 하위 → 삭제")
+    void deleteChild() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+
+        categoryService.delete(STORE_ID, beans.id());
+
+        assertThat(activeByPath()).containsOnlyKeys("식자재");
+    }
+
+    @Test
+    @DisplayName("분류 삭제 - 0건 상위, 하위 없음 → 삭제")
+    void deleteTop() {
+        categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+
+        categoryService.delete(STORE_ID, rent.id());
+
+        assertThat(activeByPath()).containsOnlyKeys("식자재");
+    }
+
     // 꺼진 것까지 tree 순서대로 "경로 → 켜짐 여부"
     private Map<String, Boolean> activeByPath() {
         Map<String, Boolean> result = new LinkedHashMap<>();
