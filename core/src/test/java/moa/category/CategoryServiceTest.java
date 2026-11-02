@@ -363,6 +363,18 @@ class CategoryServiceTest {
     }
 
     @Test
+    @DisplayName("분류 삭제 - 상위 자신이 사용됨 → CATEGORY_IN_USE")
+    void deleteUsedTop() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        categoryService.add(STORE_ID, food.id(), "원두");
+        categoryService.add(STORE_ID, null, "임대료");
+        usage.set(food.id(), 2);
+
+        assertFails(ErrorCode.CATEGORY_IN_USE, () -> categoryService.delete(STORE_ID, food.id()));
+        assertThat(activeByPath()).containsKeys("식자재", "식자재 > 원두");
+    }
+
+    @Test
     @DisplayName("분류 삭제 - 마지막 상위 → CATEGORY_LAST_ACTIVE")
     void deleteLastActiveTop() {
         CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
