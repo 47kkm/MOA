@@ -140,6 +140,24 @@ class StoreRegisteredListenerTest {
                 .containsEntry("인건비 > 급여", true);
     }
 
+    // 개수 상한(20)에 걸린 노드부터 건너뛴다 (04 설계 2.2). 상위가 빠지면 그 하위도 빠진다
+    @Test
+    @DisplayName("기본 분류 생성 - 상위가 이미 19개면 \"식자재\"만 넣고 나머지 상위는 건너뜀")
+    void skipsNodesOverLimit(AssertablePublishedEvents events) {
+        for (int i = 1; i <= 19; i++) {
+            categoryService.add(STORE_ID, null, "상위" + i);
+        }
+
+        storeRegistered(StoreType.CAFE);
+
+        assertThat(paths()).hasSize(24)
+                .contains("식자재", "식자재 > 원두", "식자재 > 기타 식자재")
+                .doesNotContain("인건비", "인건비 > 급여", "기타");
+        assertThat(events)
+                .contains(DefaultCategoriesCreated.class)
+                .matching(DefaultCategoriesCreated::count, 5);
+    }
+
     // store가 커밋한 뒤에 리스너가 돈다(04 설계 0.3). 테스트도 트랜잭션 안에서 발행하고 커밋한다
     private void storeRegistered(StoreType type) {
         tx.executeWithoutResult(status -> publisher.publishEvent(
