@@ -8,6 +8,11 @@ public final class CategoryEvents {
     }
 
     // Phase 1에는 받는 모듈이 없다. Phase 2 AI 서비스가 tree 변화를 따라가는 데 쓴다 (04 설계 2.7)
+
+    // count = 이번에 새로 만든 분류 수
+    public record DefaultCategoriesCreated(Long storeId, int count) {
+    }
+
     public record CategoryAdded(Long storeId, Long categoryId, Long parentId, String name) {
     }
 

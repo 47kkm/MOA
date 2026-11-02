@@ -15,3 +15,10 @@ CREATE TABLE category.categories
   -- 하위 분류의 형제 이름 중복만 DB가 막는다. MySQL은 NULL끼리 비교하지 않아 상위 분류 중복은 코드만 막는다 (04 설계 D2-4)
   UNIQUE KEY uk_categories_sibling_name (store_id, parent_id, name)
 ) CHARACTER SET utf8mb4;
+
+-- 기본 분류 템플릿 적용 기록. 매장마다 한 줄 (04 설계 2.2 멱등 처리, D2-8)
+CREATE TABLE category.template_applications
+(
+  store_id   BIGINT   PRIMARY KEY,
+  applied_at DATETIME NOT NULL
+);
