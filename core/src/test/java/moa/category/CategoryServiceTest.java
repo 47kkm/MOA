@@ -223,6 +223,30 @@ class CategoryServiceTest {
                 entry("식자재", true), entry("식자재 > 원두", false), entry("식자재 > 유제품", true));
     }
 
+    @Test
+    @DisplayName("분류 비활성화 - 마지막 상위 → CATEGORY_LAST_ACTIVE")
+    void deactivateLastActiveTop() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+        categoryService.deactivate(STORE_ID, rent.id());
+
+        assertFails(ErrorCode.CATEGORY_LAST_ACTIVE, () -> categoryService.deactivate(STORE_ID, food.id()));
+    }
+
+    // 켜진 상위가 하나뿐이어도, 끄려는 것이 이미 꺼진 다른 상위면 막지 않는다
+    @Test
+    @DisplayName("분류 비활성화 - 이미 꺼짐 → 아무 일 없음, 이벤트 없음")
+    void deactivateAlreadyInactive(AssertablePublishedEvents events) {
+        categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+        categoryService.deactivate(STORE_ID, rent.id());
+
+        List<Long> deactivated = categoryService.deactivate(STORE_ID, rent.id());
+
+        assertThat(deactivated).isEmpty();
+        assertThat(events.ofType(CategoryDeactivated.class)).hasSize(1);
+    }
+
     // 꺼진 것까지 tree 순서대로 "경로 → 켜짐 여부"
     private Map<String, Boolean> activeByPath() {
         Map<String, Boolean> result = new LinkedHashMap<>();
