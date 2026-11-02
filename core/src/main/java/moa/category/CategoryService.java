@@ -91,6 +91,14 @@ public class CategoryService {
         return deactivated;
     }
 
+    // 상위를 켜도 하위는 꺼진 채로 둔다. 하위는 하나씩 켠다. 이벤트 없음 (04 설계 2.2, D2-6)
+    @Transactional
+    public CategoryInfo activate(Long storeId, Long id) {
+        Category category = find(storeId, id);
+        category.activate();
+        return toInfo(category, parentOf(category));
+    }
+
     // 상위 → 그 하위 순서로 펼친다
     @Transactional(readOnly = true)
     public List<CategoryInfo> tree(Long storeId, boolean includeInactive) {
