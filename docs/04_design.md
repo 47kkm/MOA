@@ -698,6 +698,8 @@ StoreRegisteredListener (커밋 후 · 같은 스레드 · 새 트랜잭션, 0.3
 - 이전 안 "비용 분류가 하나라도 있으면 무시"는 폐기 (2026-10-25). 실패 뒤 사용자가 하나만 추가해도 템플릿이 영영 안 생김
 - 실패하면 매장 등록은 201, 비용 분류는 빈 채로 → 재시작 때 재실행 (0.3, 2026-10-27 확정)
 - 적용 기록은 애그리거트가 아니라 리스너의 처리 기록 → 엔티티 하나로 간단히
+- 상한(20)으로 건너뛴 템플릿 노드는 다시 만들지 않는다. 적용 기록은 그대로 쓴다 (2026-11-03) → 왜: 재실행은 리스너가 예외로 끝났을 때만 일어난다 (0.3). 정상으로 끝나면 기록을 안 써도 재실행되지 않는다. 이 경우는 "템플릿 실패 + 사용자가 상위를 14개 넘게 먼저 만듦"뿐이고, 나머지는 사장님이 직접 추가하면 된다
+- 리스너는 서비스(`add`)를 부르지 않는다. 같은 이름이면 409 대신 합치거나 건너뛰어야 해서다. 대신 이름 규칙·형제 상한(`Category`)과 새 순서(`nextSortOrder`)는 서비스와 같은 것을 쓴다
 
 **분류 추가** `POST .../categories {parentId?, name}`
 
@@ -729,21 +731,22 @@ CategoryService.rename
  ├ 분류 없음?                               ✗ 404 NOT_FOUND
  ├ 앞뒤 공백 제거 → 비었거나 20자 초과?        ✗ 400 VALIDATION              [안]
  ├ 지금 이름과 같음?                          → 아무 일 없음. 이벤트 없음 → 200  [안]
- ├ 형제 중에 같은 이름 (꺼진 것 포함)?         ✗ 409 CATEGORY_NAME_DUPLICATE  [밖]
+ ├ 자신을 뺀 형제 중에 같은 이름 (꺼진 것 포함)? ✗ 409 CATEGORY_NAME_DUPLICATE  [밖]
  └ category.rename(name)
  ══ 커밋 ══
  → CategoryRenamed(oldName, newName) → 200 CategoryInfo
 ```
 
 - 비용은 분류 ID를 가리키므로, 이름을 바꾸면 비용 쪽 분류 표시도 함께 바뀐다 (기획서 2.5)
+- 중복 검사에서 자신을 뺀다 → 대소문자만 바꾸는 변경("Coffee" → "coffee")은 허용된다. 빼지 않으면 대소문자 무시(D2-13) 때문에 자신과 겹쳐 409가 된다 (2026-11-03 Muse 리뷰에서 발견)
 
 **분류 비활성화** `POST .../{id}/deactivate`
 
 ```
 CategoryService.deactivate
  ├ 분류 없음?                               ✗ 404 NOT_FOUND
- ├ 켜진 상위가 이것 하나뿐?                    ✗ 409 CATEGORY_LAST_ACTIVE     [밖]
  ├ 이미 꺼짐?                                → 아무 일 없음. 200 [], 이벤트 없음 [안]
+ ├ 켜진 상위이고, 켜진 상위가 이것 하나뿐?      ✗ 409 CATEGORY_LAST_ACTIVE     [밖]
  └ category.deactivate()
      └ 상위면 하위도 전부 deactivate()  (같은 트랜잭션, D0-2)                  [밖]
  ══ 커밋 ══
@@ -773,7 +776,7 @@ CategoryService.delete
  ├ 분류 없음?                               ✗ 404 NOT_FOUND
  ├ 누적 비용 1건 이상? (CategoryUsage)         ✗ 409 CATEGORY_IN_USE          [밖]
  │   상위면 자신과 하위 전부를 합쳐 센다
- ├ 켜진 상위가 이것 하나뿐?                    ✗ 409 CATEGORY_LAST_ACTIVE     [밖]
+ ├ 켜진 상위이고, 켜진 상위가 이것 하나뿐?      ✗ 409 CATEGORY_LAST_ACTIVE     [밖]
  └ 상위면 하위 전부 삭제 → 자신 삭제 (같은 트랜잭션)                           [밖]
  ══ 커밋 ══
  → 204                  이벤트 없음 (D2-6)
@@ -782,6 +785,7 @@ CategoryService.delete
 - 기본 템플릿으로 만든 분류도 같은 규칙. 0건이면 삭제할 수 있다
 - 상위를 지우면 하위도 함께 지운다. 합쳐 0건일 때만이라 사라지는 비용이 없다 (**2026-11-03 변경**, D2-11. 이전: 하위가 있으면 삭제 불가)
 - 하위는 JPA cascade가 아니라 서비스가 리포지토리로 지운다 (JPA 최소 사용 규칙)
+- 하위나 꺼진 상위를 지울 때는 "켜진 상위 1개 이상" 검사를 하지 않는다. 켜진 상위 수가 줄지 않기 때문이다 (끄기도 같음)
 
 **분류 tree 조회** `GET .../categories?includeInactive=false`
 
@@ -808,6 +812,7 @@ categoryService.isActive(storeId, categoryId)
 ```
 CategoryService.move
  ├ 분류 없음 · 새 상위 없음?                  ✗ 404 NOT_FOUND
+ ├ 새 상위 = 지금 상위?                       → 아무 일 없음. 순서·이벤트 그대로 → 200 [안]
  ├ category.moveTo(newParent)
  │   ├ 자신이 상위?                          ✗ 400 VALIDATION              [안]
  │   └ 새 상위가 하위 분류?                   ✗ 400 VALIDATION              [안]
@@ -847,7 +852,8 @@ CategoryService.move
 | 규칙 | 안/밖 | 어기면 | 근거 |
 |---|---|---|---|
 | 이름 필수, 1~20자. 앞뒤 공백 제거. 공백만 불가 | 안 | 400 `VALIDATION` | 기획서 2.4, P2-1 |
-| 2단계까지. 하위 아래에는 추가 불가 | 안 (`childOf`) + 밖 (상위 조회 후 `isTop()`) | 409 `CATEGORY_DEPTH` | 기획서 2.4 |
+| 2단계까지. 하위 아래에는 추가 불가 | 밖 (상위 조회 후 `isTop()`) | 409 `CATEGORY_DEPTH` | 기획서 2.4 |
+| 이동할 곳은 상위여야 함 (선택) | 안 (`moveTo`) | 400 `VALIDATION` | 기획서 2.5 옮기기, D2-15 |
 | 같은 이름으로 이름 변경 → 아무 일 없음 (이벤트도 없음) | 안 | — | 기획서 2.5 |
 | 꺼진 걸 끄기 · 켜진 걸 켜기 → 아무 일 없음 | 안 | — | — |
 | 상위는 옮길 수 없음 (선택) | 안 (`moveTo`) | 400 `VALIDATION` | 기획서 2.5 옮기기 |
@@ -857,7 +863,7 @@ CategoryService.move
 | 하위를 켜려면 상위가 켜져 있어야 함 | 밖 | 409 `CATEGORY_PARENT_INACTIVE` | 기획서 2.5 켜기 |
 | 꺼진 상위 아래에는 하위를 추가·이동할 수 없음 | 밖 | 409 `CATEGORY_PARENT_INACTIVE` | 기획서 2.5 하위 분류 추가, P2-10 |
 | 상위를 켜도 하위는 그대로 | 밖 | — | 기획서 2.5 켜기 |
-| 켜진 상위 분류는 항상 1개 이상 | 밖 | 409 `CATEGORY_LAST_ACTIVE` | 기획서 2.4, P2-9 |
+| 켜진 상위 분류는 항상 1개 이상. 대상이 켜진 상위일 때만 검사 | 밖 | 409 `CATEGORY_LAST_ACTIVE` | 기획서 2.4, P2-9 |
 | 상위를 삭제하면 하위도 함께 삭제 (같은 트랜잭션) | 밖 | — | 기획서 2.5 삭제, P2-7 (2026-11-03 변경) |
 | 누적 비용 1건 이상이면 삭제 불가 (끄기만). 상위는 자신과 하위를 합쳐 셈 | 밖 (`CategoryUsage`) | 409 `CATEGORY_IN_USE` | 기획서 2.1 개요, P2-7 |
 | 기본 템플릿 분류도 위 규칙 그대로 | — | — | P2-7 |
@@ -898,6 +904,7 @@ CategoryService.move
 | `isTop()`, `isChildOf(parent)` | 판별 | — |
 
 - 형제 상한 `MAX_SIBLINGS = 20`과 이름 규칙 `validName`은 `Category`에 두고, 서비스와 템플릿 리스너가 같이 쓴다 (2026-11-03 구현)
+- `childOf`의 `isTop()` 검사는 안전장치다. 깊이 규칙의 주인은 서비스의 검사(409 `CATEGORY_DEPTH`, 2.2)이고, 화면에서 온 요청은 거기서 먼저 걸린다. 서비스 검사를 빠뜨려도 3단계가 생기지 않게 막는 마지막 줄이라 400 `VALIDATION`으로 끝난다
 
 - setter 없음. 상태는 위 메서드로만 바뀐다
 
@@ -905,55 +912,91 @@ CategoryService.move
 
 기획서 2장 검증 기준 39건(2026-11-03 기준) 중 백엔드가 맡는 것. 접기 상태, 입력란, 버튼 비활성, 확인창은 프론트.
 
+**있는 테스트** (2026-11-03 코드와 맞춤. 63개)
+
+| 층 | 클래스 | `@DisplayName` |
+|---|---|---|
+| 단위 | `CategoryTest` | 분류 추가 - 상위 생성, parentId 없음 |
+| 단위 | `CategoryTest` | 분류 추가 - 하위 생성, 상위를 가리킴 |
+| 단위 | `CategoryTest` | 분류 추가 - 하위 아래 추가 → 거부 (2단계 초과) |
+| 단위 | `CategoryTest` | 분류 추가 - 빈 이름 → 거부 (공백만 · 전각 공백만 · null 포함) |
+| 단위 | `CategoryTest` | 분류 추가 - 21자 → 거부 (20자는 허용) |
+| 단위 | `CategoryTest` | 분류 이름 변경 - 앞뒤 공백 제거 |
+| 단위 | `CategoryTest` | 분류 이름 변경 - 같은 이름 → 변경 없음 |
+| 단위 | `CategoryTest` | 분류 비활성화 - 켜짐에서 꺼짐 |
+| 단위 | `CategoryTest` | 분류 활성화 - 꺼짐에서 켜짐 |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 상위 추가 → tree 끝에, CategoryAdded 발행 |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 하위 추가 → 그 상위 아래 끝에, 경로 "식자재 > 시럽" |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 앞쪽 형제를 지운 뒤 추가해도 끝에 |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 없는 상위 → NOT_FOUND |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 하위 아래 추가 → CATEGORY_DEPTH |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 꺼진 상위 아래 → CATEGORY_PARENT_INACTIVE |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 형제 중복 → CATEGORY_NAME_DUPLICATE |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 대소문자만 다른 이름 → CATEGORY_NAME_DUPLICATE |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 다른 상위와는 중복 허용 |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 꺼진 분류와 중복 → CATEGORY_NAME_DUPLICATE |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 상위 20개 → CATEGORY_LIMIT |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 꺼진 것 포함 상위 20개 → CATEGORY_LIMIT |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 하위 20개 → CATEGORY_LIMIT |
+| 통합 | `CategoryServiceTest` | 분류 이름 변경 - 정상, CategoryRenamed 발행 |
+| 통합 | `CategoryServiceTest` | 분류 이름 변경 - 중복 → CATEGORY_NAME_DUPLICATE |
+| 통합 | `CategoryServiceTest` | 분류 이름 변경 - 같은 이름 → 200, 이벤트 없음 |
+| 통합 | `CategoryServiceTest` | 분류 이름 변경 - 대소문자만 바꿈 → 바뀜, CategoryRenamed 발행 |
+| 통합 | `CategoryServiceTest` | 분류 비활성화 - 하위 없는 상위 → 꺼짐, CategoryDeactivated 발행 |
+| 통합 | `CategoryServiceTest` | 분류 비활성화 - 하위 있는 상위 → 하위도 함께 꺼짐 |
+| 통합 | `CategoryServiceTest` | 분류 비활성화 - 하위만 → 상위·형제는 그대로 |
+| 통합 | `CategoryServiceTest` | 분류 비활성화 - 마지막 상위 → CATEGORY_LAST_ACTIVE |
+| 통합 | `CategoryServiceTest` | 분류 비활성화 - 꺼진 상위가 있어도 켜진 상위가 하나뿐 → CATEGORY_LAST_ACTIVE |
+| 통합 | `CategoryServiceTest` | 분류 비활성화 - 이미 꺼짐 → 아무 일 없음, 이벤트 없음 |
+| 통합 | `CategoryServiceTest` | 분류 활성화 - 상위 켜기 → 하위는 여전히 꺼짐 |
+| 통합 | `CategoryServiceTest` | 분류 활성화 - 상위 켜진 하위 → 켜짐 |
+| 통합 | `CategoryServiceTest` | 분류 활성화 - 이미 켜짐 → 아무 일 없음 |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 0건 하위 → 삭제 |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 0건 상위, 하위 없음 → 삭제 |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 0건 상위와 하위 → 함께 삭제 |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 하위 중 하나라도 사용 → CATEGORY_IN_USE, 상위·하위 모두 남음 |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 상위 자신이 사용됨 → CATEGORY_IN_USE |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 마지막 상위 → CATEGORY_LAST_ACTIVE |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 꺼진 상위가 있어도 켜진 상위가 하나뿐 → CATEGORY_LAST_ACTIVE |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 꺼진 상위는 켜진 상위가 하나뿐이어도 → 삭제 |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 사용된 분류 → CATEGORY_IN_USE |
+| 통합 | `CategoryServiceTest` | 분류 tree 조회 - 상위 → 하위 순서, 경로·활성 여부·건수 |
+| 통합 | `CategoryServiceTest` | 분류 tree 조회 - 활성만 → 꺼진 것 제외 |
+| 통합 | `CategoryServiceTest` | 분류 존재 확인 - 켜진 분류 → true, 꺼진·없는 분류 → false |
+| 통합 | `CategoryServiceTest` | 분류 정보 - 요청한 ID의 경로, 건수는 0, 없는 ID는 빠짐 |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - StoreRegistered 수신 → 상위 7, 하위 9 생성, DefaultCategoriesCreated 발행 |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - 다른 업종 → 같은 템플릿 |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - 두 번 수신 → 두 번째는 무시 (적용 기록 있음) |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - 사용자가 분류를 먼저 추가했어도 적용 기록이 없으면 템플릿 생성 |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - 사용자가 "식자재"를 먼저 만들었으면 새로 만들지 않고 그 아래에 템플릿 하위를 넣음 (중복 없음) |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - 합칠 "식자재"가 꺼져 있으면 넣는 하위도 꺼진 상태 |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - 상위가 이미 19개면 "식자재"만 넣고 나머지 상위는 건너뜀 |
+| 통합 | `StoreRegisteredListenerTest` | 분류 삭제 - 기본 템플릿 분류 0건 → 삭제 |
+| HTTP | `CategoryControllerTest` | 분류 추가 - 201과 본문 |
+| HTTP | `CategoryControllerTest` | 분류 삭제 - 사용 중 → 409 CATEGORY_IN_USE |
+| HTTP | `CategoryControllerTest` | 분류 삭제 - 204 |
+| HTTP | `CategoryControllerTest` | 분류 tree 조회 - 200과 목록, includeInactive 기본값은 false |
+| HTTP | `CategoryControllerTest` | 분류 이름 변경 - 200과 본문 |
+| HTTP | `CategoryControllerTest` | 분류 비활성화 - 200과 deactivatedIds |
+| HTTP | `CategoryControllerTest` | 분류 활성화 - 200과 본문 |
+
+- 경계 "category가 expense internal을 모름, 순환 없음"은 전체 `ModularityTest` 하나가 맡는다 (0.7)
+- 구현 때 더한 테스트: 빈 이름의 경우들, 앞 형제 삭제 뒤 순서, 없는 상위, 꺼진 것 포함 상한, 대소문자, 이미 켜짐·꺼짐, 켜진 상위 1개 조건, 상위 함께 삭제와 합산 건수, 템플릿의 상한 건너뛰기, `infoOf`, HTTP 5개
+
+**머지 전에 사용자가 쓰는 테스트 (필수)**
+
+| 층 | `@DisplayName` | 왜 |
+|---|---|---|
+| 통합 | 분류 활성화 - 상위 꺼진 하위 → CATEGORY_PARENT_INACTIVE | 모듈마다 사용자가 쓰는 조각 (시작 문서 6.1). `add`의 같은 검사를 `activate`에 따라 쓴다. 이 테스트가 초록이 되기 전에는 category PR을 머지하지 않는다 (PR은 draft) |
+
+**선택 기능의 테스트 (만들 때 함께)**
+
 | 층 | `@DisplayName` |
 |---|---|
-| 단위 | 분류 추가 - 상위 생성, parentId 없음 |
-| 단위 | 분류 추가 - 하위 생성, 상위를 가리킴 |
-| 단위 | 분류 추가 - 하위 아래 추가 → 거부 (2단계 초과) |
-| 단위 | 분류 추가 - 빈 이름 → 거부 |
-| 단위 | 분류 추가 - 21자 → 거부 (20자는 허용) |
-| 단위 | 분류 이름 변경 - 앞뒤 공백 제거 |
-| 단위 | 분류 이름 변경 - 같은 이름 → 변경 없음 |
-| 단위 | 분류 비활성화 - 켜짐에서 꺼짐 |
-| 단위 | 분류 활성화 - 꺼짐에서 켜짐 |
-| 단위 | 분류 이동 - 상위를 옮기려 함 → 거부 |
-| 통합 | 기본 분류 생성 - StoreRegistered 수신 → 상위 7, 하위 9 생성, DefaultCategoriesCreated 발행 |
-| 통합 | 기본 분류 생성 - 다른 업종 → 같은 템플릿 |
-| 통합 | 기본 분류 생성 - 두 번 수신 → 두 번째는 무시 (적용 기록 있음) |
-| 통합 | 기본 분류 생성 - 사용자가 분류를 먼저 추가했어도 적용 기록이 없으면 템플릿 생성 |
-| 통합 | 기본 분류 생성 - 사용자가 "식자재"를 먼저 만들었으면 새로 만들지 않고 그 아래에 템플릿 하위를 넣음 (중복 없음) |
-| 통합 | 기본 분류 생성 - 합칠 "식자재"가 꺼져 있으면 넣는 하위도 꺼진 상태 |
-| 통합 | 분류 추가 - 상위 추가 → tree 끝에, CategoryAdded 발행 |
-| 통합 | 분류 추가 - 하위 추가 → 그 상위 아래 끝에, 경로 "식자재 > 시럽" |
-| 통합 | 분류 추가 - 형제 중복 → CATEGORY_NAME_DUPLICATE |
-| 통합 | 분류 추가 - 다른 상위와는 중복 허용 |
-| 통합 | 분류 추가 - 꺼진 분류와 중복 → CATEGORY_NAME_DUPLICATE |
-| 통합 | 분류 추가 - 상위 20개 → CATEGORY_LIMIT |
-| 통합 | 분류 추가 - 하위 20개 → CATEGORY_LIMIT |
-| 통합 | 분류 이름 변경 - 정상, CategoryRenamed 발행 |
-| 통합 | 분류 이름 변경 - 중복 → CATEGORY_NAME_DUPLICATE |
-| 통합 | 분류 비활성화 - 하위 없는 상위 → 꺼짐, CategoryDeactivated 발행 |
-| 통합 | 분류 비활성화 - 하위 있는 상위 → 하위도 함께 꺼짐 |
-| 통합 | 분류 비활성화 - 하위만 → 상위·형제는 그대로 |
-| 통합 | 분류 비활성화 - 마지막 상위 → CATEGORY_LAST_ACTIVE |
-| 통합 | 분류 활성화 - 상위 켜기 → 하위는 여전히 꺼짐 |
-| 통합 | 분류 활성화 - 상위 꺼진 하위 → CATEGORY_PARENT_INACTIVE |
-| 통합 | 분류 활성화 - 상위 켜진 하위 → 켜짐 |
-| 통합 | 분류 삭제 - 0건 하위 → 삭제 |
-| 통합 | 분류 삭제 - 0건 상위, 하위 없음 → 삭제 |
-| 통합 | 분류 삭제 - 사용된 분류 → CATEGORY_IN_USE |
-| 통합 | 분류 삭제 - 하위 있는 상위 → CATEGORY_HAS_CHILDREN |
-| 통합 | 분류 삭제 - 기본 템플릿 분류 0건 → 삭제 |
-| 통합 | 분류 삭제 - 마지막 상위 → CATEGORY_LAST_ACTIVE |
-| 통합 | 분류 tree 조회 - 상위 → 하위 순서, 경로·활성 여부·건수 |
-| 통합 | 분류 tree 조회 - 활성만 → 꺼진 것 제외 |
-| 통합 | 분류 존재 확인 - 켜진 분류 → true, 꺼진·없는 분류 → false |
+| 단위 | 분류 이동 (선택) - 상위를 옮기려 함 → 거부 |
 | 통합 | 분류 이동 (선택) - 정상 → 새 상위 아래 끝 |
 | 통합 | 분류 이동 (선택) - 이름 충돌 → CATEGORY_NAME_DUPLICATE |
 | 통합 | Markdown 내보내기 (선택) - 켜진 것만, 형식 |
-| 경계 | 모듈 경계 - category가 expense internal을 모름, 순환 없음 |
-| HTTP | 분류 추가 - 201과 본문 |
-| HTTP | 분류 삭제 - 사용 중 → 409 CATEGORY_IN_USE |
 
 ### 2.6 결정 사항 [검토]
 
@@ -1002,7 +1045,8 @@ CategoryService.move
 | 메서드 | 쓰는 규칙 |
 |---|---|
 | `findByIdAndStoreId` | 분류 하나 조회. 다른 매장의 분류는 없는 것과 같음 (404) |
-| `existsByStoreIdAndParentIdAndName` | 형제 이름 중복 (상위끼리는 parentId null) |
+| `existsByStoreIdAndParentIdAndName` | 추가 때 형제 이름 중복 (상위끼리는 parentId null) |
+| `existsByStoreIdAndParentIdAndNameAndIdNot` | 이름 변경 때 형제 이름 중복. 자신은 뺀다 |
 | `countByStoreIdAndParentId` | 개수 상한 |
 | `nextSortOrder` (`default` 메서드) ← `findTopByStoreIdAndParentIdOrderBySortOrderDesc` | 새 분류의 순서 = 형제 중 가장 뒤 + 1. 형제 수로 정하면 앞 형제를 지운 뒤 번호가 겹친다 (2026-11-03 구현 때 테스트가 잡음) |
 | `countByStoreIdAndParentIdIsNullAndActiveTrue` | 켜진 상위 분류 최소 1개 |
