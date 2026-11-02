@@ -3,7 +3,9 @@ package moa.category.internal;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -91,6 +93,51 @@ class StoreRegisteredListenerTest {
 
         assertThat(paths()).doesNotContain("마케팅").hasSize(15);
         assertThat(events.ofType(DefaultCategoriesCreated.class)).hasSize(1);
+    }
+
+    // 템플릿 생성이 실패해 사장님이 먼저 분류를 만들었고, 재시작 때 재실행되는 경우 (04 설계 2.2)
+    @Test
+    @DisplayName("기본 분류 생성 - 사용자가 분류를 먼저 추가했어도 적용 기록이 없으면 템플릿 생성")
+    void createsTemplateAfterUserCategory() {
+        categoryService.add(STORE_ID, null, "커피머신");
+
+        storeRegistered(StoreType.CAFE);
+
+        assertThat(paths()).first().isEqualTo("커피머신");
+        assertThat(paths()).hasSize(17).containsAll(TEMPLATE_PATHS);
+    }
+
+    @Test
+    @DisplayName("기본 분류 생성 - 사용자가 \"식자재\"를 먼저 만들었으면 새로 만들지 않고 그 아래에 템플릿 하위를 넣음 (중복 없음)")
+    void mergesIntoExistingTop(AssertablePublishedEvents events) {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        categoryService.add(STORE_ID, food.id(), "원두");
+
+        storeRegistered(StoreType.CAFE);
+
+        assertThat(paths()).containsExactlyElementsOf(TEMPLATE_PATHS);
+        assertThat(events)
+                .contains(DefaultCategoriesCreated.class)
+                .matching(DefaultCategoriesCreated::count, 14);
+    }
+
+    @Test
+    @DisplayName("기본 분류 생성 - 합칠 \"식자재\"가 꺼져 있으면 넣는 하위도 꺼진 상태")
+    void childrenOfInactiveTopStayInactive() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        categoryService.add(STORE_ID, null, "커피머신");
+        categoryService.deactivate(STORE_ID, food.id());
+
+        storeRegistered(StoreType.CAFE);
+
+        Map<String, Boolean> active = new HashMap<>();
+        categoryService.tree(STORE_ID, true).forEach(info -> active.put(info.path(), info.active()));
+        assertThat(active).containsEntry("식자재", false)
+                .containsEntry("식자재 > 원두", false)
+                .containsEntry("식자재 > 유제품", false)
+                .containsEntry("식자재 > 베이커리", false)
+                .containsEntry("식자재 > 기타 식자재", false)
+                .containsEntry("인건비 > 급여", true);
     }
 
     // store가 커밋한 뒤에 리스너가 돈다(04 설계 0.3). 테스트도 트랜잭션 안에서 발행하고 커밋한다
