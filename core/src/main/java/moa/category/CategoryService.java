@@ -102,7 +102,12 @@ public class CategoryService {
     // 이벤트 없음 (04 설계 D2-6)
     @Transactional
     public void delete(Long storeId, Long id) {
-        categories.delete(find(storeId, id));
+        Category category = find(storeId, id);
+        if (category.isTop() && categories.countByStoreIdAndParentId(storeId, id) > 0) {
+            throw new MoaException(ErrorCode.CATEGORY_HAS_CHILDREN, "delete the child categories first");
+        }
+        rejectIfLastActiveTop(storeId, category);
+        categories.delete(category);
     }
 
     // 상위 → 그 하위 순서로 펼친다
