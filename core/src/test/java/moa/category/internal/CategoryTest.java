@@ -68,6 +68,16 @@ class CategoryTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    @DisplayName("분류 이름 변경 - 앞뒤 공백 제거")
+    void renameStrips() {
+        Category category = Category.top(STORE_ID, "식자재", 0);
+
+        category.rename("  재료비  ");
+
+        assertThat(category.getName()).isEqualTo("재료비");
+    }
+
     // id는 DB가 매긴다. 단위 테스트에는 DB가 없으므로 저장된 것처럼 id를 직접 넣는다
     private static Category saved(Category category, Long id) {
         ReflectionTestUtils.setField(category, "id", id);
