@@ -3,6 +3,7 @@ package moa.category;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.entry;
+import static org.assertj.core.api.Assertions.tuple;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -340,6 +341,42 @@ class CategoryServiceTest {
         usage.set(beans.id(), 3);
 
         assertFails(ErrorCode.CATEGORY_IN_USE, () -> categoryService.delete(STORE_ID, beans.id()));
+    }
+
+    @Test
+    @DisplayName("분류 tree 조회 - 상위 → 하위 순서, 경로·활성 여부·건수")
+    void treeWithCounts() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo milk = categoryService.add(STORE_ID, food.id(), "유제품");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+        categoryService.deactivate(STORE_ID, milk.id());
+        usage.set(beans.id(), 5);
+        usage.set(rent.id(), 2);
+
+        assertThat(categoryService.tree(STORE_ID, true))
+                .extracting(CategoryInfo::path, CategoryInfo::active, CategoryInfo::expenseCount)
+                .containsExactly(
+                        tuple("식자재", true, 0L),
+                        tuple("식자재 > 원두", true, 5L),
+                        tuple("식자재 > 유제품", false, 0L),
+                        tuple("임대료", true, 2L));
+    }
+
+    @Test
+    @DisplayName("분류 tree 조회 - 활성만 → 꺼진 것 제외")
+    void treeActiveOnly() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo milk = categoryService.add(STORE_ID, food.id(), "유제품");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+        categoryService.add(STORE_ID, rent.id(), "월세");
+        categoryService.deactivate(STORE_ID, milk.id());
+        categoryService.deactivate(STORE_ID, rent.id());
+
+        assertThat(categoryService.tree(STORE_ID, false))
+                .extracting(CategoryInfo::path)
+                .containsExactly("식자재", "식자재 > 원두");
     }
 
     // 꺼진 것까지 tree 순서대로 "경로 → 켜짐 여부"
