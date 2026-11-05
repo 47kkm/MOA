@@ -38,6 +38,15 @@ public class StoreService {
         return toInfo(store);
     }
 
+    // save를 부르지 않는다. 읽어 온 store를 고치면 커밋 때 변경 감지가 UPDATE를 보낸다
+    @Transactional
+    public StoreInfo update(Long storeId, String name, StoreType type) {
+        Store store = stores.findById(storeId)
+                .orElseThrow(() -> new MoaException(ErrorCode.NOT_FOUND, "store not found: " + storeId));
+        store.update(name, type);
+        return toInfo(store);
+    }
+
     @Transactional(readOnly = true)
     public StoreInfo get(Long storeId) {
         return stores.findById(storeId)
