@@ -103,8 +103,15 @@ public class CategoryService {
     @Transactional
     public CategoryInfo activate(Long storeId, Long id) {
         Category category = find(storeId, id);
+        Category parent = parentOf(category);
+
+        // 꺼진 상위 아래에 켜진 하위가 생기지 않게 (04 설계 2.3, D2-12)
+        if (parent != null && !parent.isActive()) {
+            throw new MoaException(ErrorCode.CATEGORY_PARENT_INACTIVE, "parent category is inactive");
+        }
+
         category.activate();
-        return toInfo(category, parentOf(category));
+        return toInfo(category, parent);
     }
 
     // 상위를 지우면 하위도 같은 트랜잭션에서 지운다. JPA cascade 없이 리포지토리로 하나씩 (04 설계 D2-11). 이벤트 없음 (D2-6)
