@@ -66,13 +66,14 @@ public class CategoryService {
         Category category = find(storeId, id);
         String oldName = category.getName();
         String newName = Category.validName(name);
-        // 공백을 자르고 보니 지금 이름과 같으면 바꿀 것이 없다. 아무 일 없고 이벤트도 없다 (04 설계 2.2)
-        if (newName.equals(oldName)) {
-            return toInfo(category, parentOf(category));
-        }
+
         rejectDuplicateName(storeId, category.getParentId(), newName, id);
-        category.rename(newName);
-        events.publishEvent(new CategoryRenamed(storeId, id, oldName, newName));
+
+        // 같은 이름이면 rename이 false를 돌려준다. 아무 일 없고 이벤트도 없다 (04 설계 2.3)
+        if (category.rename(newName)) {
+            events.publishEvent(new CategoryRenamed(storeId, id, oldName, newName));
+        }
+
         return toInfo(category, parentOf(category));
     }
 
