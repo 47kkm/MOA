@@ -362,6 +362,18 @@ class CategoryServiceTest {
     }
 
     @Test
+    @DisplayName("분류 활성화 - 상위 꺼진 하위 → CATEGORY_PARENT_INACTIVE")
+    void activateChildUnderInactiveTop() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        categoryService.add(STORE_ID, null, "임대료");
+
+        categoryService.deactivate(STORE_ID, food.id());
+
+        assertFails(ErrorCode.CATEGORY_PARENT_INACTIVE, () -> categoryService.activate(STORE_ID, beans.id()));
+    }
+
+    @Test
     @DisplayName("분류 활성화 - 상위 켜진 하위 → 켜짐")
     void activateChildUnderActiveTop() {
         CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
