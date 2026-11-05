@@ -85,4 +85,14 @@ class StoreTest {
         store.update("카페 모아2", StoreType.CAFE);
         assertThat(store.getName()).isEqualTo("카페 모아2");
     }
+
+    @Test
+    @DisplayName("매장 정보 수정 - 업종 변경 → 등록일은 그대로")
+    void updatesType() {
+        Store store = Store.register("카페 모아", StoreType.CAFE, TODAY);
+
+        store.update("카페 모아", StoreType.RESTAURANT);
+        assertThat(store.getType()).isEqualTo(StoreType.RESTAURANT);
+        assertThat(store.getRegisteredAt()).isEqualTo(TODAY);
+    }
 }
