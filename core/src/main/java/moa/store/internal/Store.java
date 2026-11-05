@@ -46,6 +46,7 @@ public class Store {
 
     public void update (String name, StoreType type) {
         this.name = validName(name);
+        this.type = validType(type);
     }
 
     // 이름 규칙: 앞뒤 공백을 자른 뒤 1~50자 (04 설계 1.3). 등록과 수정이 함께 쓴다
