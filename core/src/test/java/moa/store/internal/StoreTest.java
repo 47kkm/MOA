@@ -95,4 +95,14 @@ class StoreTest {
         assertThat(store.getType()).isEqualTo(StoreType.RESTAURANT);
         assertThat(store.getRegisteredAt()).isEqualTo(TODAY);
     }
+
+    @Test
+    @DisplayName("매장 정보 수정 - 빈 이름 → 거부")
+    void updateRejectsEmptyName() {
+        Store store = Store.register("카페 모아", StoreType.CAFE, TODAY);
+
+        assertThatThrownBy(() -> store.update("", StoreType.CAFE))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(store.getName()).isEqualTo("카페 모아");
+    }
 }
