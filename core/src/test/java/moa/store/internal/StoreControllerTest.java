@@ -3,6 +3,7 @@ package moa.store.internal;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -82,6 +83,21 @@ class StoreControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"name": "카페 모아", "type": "BAKERY"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION"));
+    }
+
+    @Test
+    @DisplayName("매장 정보 수정 - 빈 이름 → 400 VALIDATION")
+    void updateEmptyName() throws Exception {
+        given(storeService.update(1L, "", StoreType.CAFE))
+                .willThrow(new IllegalArgumentException("name is required"));
+
+        mvc.perform(put("/api/stores/1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "", "type": "CAFE"}
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION"));

@@ -117,7 +117,7 @@ core/
    ├─ main/java/moa/
    │   ├─ MoaApplication.java        main(). 여기서 Spring이 시작됨
    │   ├─ ClockConfig.java           "오늘"을 만드는 Clock 빈 (D0-6)
-   │   ├─ shared/                    공통 값 객체 (Money)
+   │   ├─ shared/                    공통 값 객체 (Money), 오류 코드 (ErrorCode · MoaException). internal/에 공통 오류 응답
    │   ├─ store/                     모듈. 아래 0.2 규칙
    │   ├─ category/
    │   ├─ sales/  expense/  budget/  report/
@@ -286,9 +286,9 @@ storeRepository.save(store)     ← MOA 코드는 여기까지만 안다
 |---|---|
 | 서버 | MySQL 8 하나 (Docker Compose). 테스트는 Testcontainers가 같은 이미지로 띄움 |
 | 스키마 | 모듈별 6개 `store, category, sales, expense, budget, report` + 공통 1개 `moa` (Flyway 이력표, Modulith `event_publication`) |
-| 연결 | DataSource 하나. JDBC URL의 기본 DB는 공통 스키마 `moa`. 모듈 엔티티는 `@Table(name = "categories", schema = "category")`처럼 스키마를 명시. → 왜 `moa`: Modulith 발행 기록은 MySQL에서 스키마 지정을 지원하지 않아 기본 DB에 있어야 함 (2026-10-27 뼈대에서 확인. 이전: 기본 DB 없음) |
+| 연결 | DataSource 하나. JDBC URL의 기본 DB는 공통 스키마 `moa`. 모듈 엔티티는 `@Table(name = "categories", catalog = "category")`처럼 스키마를 명시. **MySQL에서는 스키마(= DB)를 Hibernate가 catalog로 다루므로 `schema`가 아니라 `catalog`로 적는다** (2026-11-01 store 구현에서 확인. `schema`로 적으면 "missing table"). → 왜 `moa`: Modulith 발행 기록은 MySQL에서 스키마 지정을 지원하지 않아 기본 DB에 있어야 함 (2026-10-27 뼈대에서 확인. 이전: 기본 DB 없음) |
 | Flyway | 인스턴스 하나가 스키마 7개를 만들고 관리 (이력표는 `moa`). SQL 파일은 `db/migration/<모듈>/V<번호>__create_xxx.sql`. **번호는 폴더와 상관없이 전체에서 하나씩 증가** (V1 = moa 발행 기록, V2부터 store·category …). 인스턴스가 하나라 두 폴더에 같은 번호가 있으면 앱이 뜨지 않음 (2026-10-27 정정). 파일 안에서 `category.categories`처럼 스키마를 붙여 씀 |
-| 이름 규칙 | 테이블은 복수형 snake_case, 컬럼은 snake_case. 모든 테이블에 `id BIGINT AUTO_INCREMENT`, `created_at DATETIME`, `updated_at DATETIME`. 예외: Modulith의 `moa.EVENT_PUBLICATION`은 프레임워크가 정한 대문자 이름 그대로 |
+| 이름 규칙 | 테이블은 복수형 snake_case, 컬럼은 snake_case. 모든 테이블에 `id BIGINT AUTO_INCREMENT`, `created_at DATETIME`, `updated_at DATETIME`. `created_at`·`updated_at`은 DB 기본값(`DEFAULT CURRENT_TIMESTAMP`, `ON UPDATE CURRENT_TIMESTAMP`)이 채우고 엔티티에는 매핑하지 않는다 (2026-11-01). 예외: Modulith의 `moa.EVENT_PUBLICATION`은 프레임워크가 정한 대문자 이름 그대로 |
 | 금액 | `DECIMAL(15,0)`. 날짜는 `DATE`. 문자열은 `VARCHAR` + `utf8mb4` |
 | 모듈 간 참조 | `store_id`, `category_id` 같은 컬럼만. FK 제약 없음. JOIN 없음 |
 | 타임존 | 서버·JDBC 모두 `Asia/Seoul`. "오늘"은 `LocalDate.now(ZoneId.of("Asia/Seoul"))` 한 군데(`Clock` 빈)에서만 만든다 |
@@ -358,13 +358,26 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 | `CATEGORY_NAME_DUPLICATE` | 409 | category | 형제 중에 같은 이름 (꺼진 것 포함) | 2.2 분류 추가 · 이름 변경 · 이동 |
 | `CATEGORY_LIMIT` | 409 | category | 상위 20개, 또는 상위당 하위 20개를 넘김 | 2.2 분류 추가 · 이동 |
 | `CATEGORY_DEPTH` | 409 | category | 하위 아래에 추가 (2단계 초과) | 2.2 분류 추가 |
-| `CATEGORY_PARENT_INACTIVE` | 409 | category | 상위가 꺼진 하위를 켬 | 2.2 분류 활성화 |
+| `CATEGORY_PARENT_INACTIVE` | 409 | category | 상위가 꺼진 하위를 켬. 꺼진 상위 아래에 하위를 추가·이동 | 2.2 분류 활성화 · 추가 · 이동 |
 | `CATEGORY_LAST_ACTIVE` | 409 | category | 마지막 켜진 상위를 끄거나 삭제 | 2.2 분류 비활성화 · 삭제 |
-| `CATEGORY_HAS_CHILDREN` | 409 | category | 하위가 있는 상위를 삭제하거나 이동 | 2.2 분류 삭제 · 이동 |
-| `CATEGORY_IN_USE` | 409 | category | 누적 비용 1건 이상인 분류를 삭제 | 2.2 분류 삭제 |
+| `CATEGORY_IN_USE` | 409 | category | 누적 비용 1건 이상인 분류를 삭제 (상위는 하위까지 합쳐) | 2.2 분류 삭제 |
 
-- 분류 이동(선택)의 "상위를 옮기려 함" 거부 코드는 구현 때 정해 이 표에 더한다
+- 분류 이동(선택)의 두 거부(상위를 옮김, 하위 아래로 옮김)는 400 `VALIDATION`. 화면에서 나올 수 없는 요청이다 (2026-11-03, D2-15)
 - 각 장의 흐름 그림과 N.7 HTTP 표에도 코드를 그대로 적는다. 이 표는 "코드의 뜻", 각 장은 "어디서 나오나"
+
+**예외 → 응답** (2026-11-01 store 구현)
+
+| 예외 | 응답 | 던지는 곳 |
+|---|---|---|
+| `MoaException(코드)` | 그 코드의 상태 (404 · 409) | 응용 서비스, 매장 접근 검사 |
+| `IllegalArgumentException` | 400 `VALIDATION` | 애그리거트의 입력 규칙 (store: 이름 비움·50자 초과·업종 없음. category: 이름 비움·20자 초과, `childOf`·`moveTo` 안전장치) |
+| 읽을 수 없는 JSON, 숫자 자리에 글자 | 400 `VALIDATION` | Spring (요청 변환) |
+| Spring MVC의 그 밖의 4xx (없는 주소, 지원하지 않는 메서드 …) | 상태 그대로. 404면 `NOT_FOUND`, 나머지는 `VALIDATION` | Spring |
+| 그 외 전부 | 500 `INTERNAL_ERROR`. 스택은 로그에만 | — |
+
+- 코드: `moa/shared/ErrorCode`(위 목록), `moa/shared/MoaException`, `moa/shared/internal/ApiExceptionHandler`
+- 테스트: `ApiExceptionHandlerTest` (500 · 없는 주소 404 · 숫자 자리에 글자 400)
+- Spring은 예외 타입이 직접 맞는 핸들러를 원인 예외보다 먼저 고른다. 그래서 "숫자 자리에 글자"는 `Exception` 핸들러에 잡히지 않게 핸들러를 따로 둔다
 
 ### 0.7 테스트 전략 [참고]
 
@@ -373,7 +386,7 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 | 단위 | 애그리거트 메서드의 규칙 | JUnit 5 + AssertJ. DB 없음, Spring 없음 | ms |
 | 통합 (모듈 하나) | 응용 서비스 한 기능 = 요청 하나. 저장·조회·이벤트 발행·리스너 처리까지 | `@ApplicationModuleTest` + Testcontainers MySQL. 다른 모듈은 뜨지 않고, 필요한 상대 인터페이스는 테스트 소스의 가짜로 (예: `FakeCategoryUsage`는 분류 ID별 건수를 지정). 리스너가 동기라 대기 장치(Awaitility) 불필요 | 초 |
 | 경계 | 모듈 간 import·순환 | `ApplicationModules.of(MoaApplication.class).verify()` 하나 | 초 |
-| HTTP | 컨트롤러의 JSON 변환과 상태 코드 | `@WebMvcTest`, 서비스는 Mock. 기능당 정상 1개 + 오류 1개만. 매장 접근 검사는 테스트 소스의 가짜 컨트롤러(`/api/stores/{storeId}/ping`)와 인터셉터 등록 설정을 `@Import`한 슬라이스에서 | ms |
+| HTTP | 컨트롤러의 JSON 변환과 상태 코드 | `@WebMvcTest`, 서비스는 Mock. 기능당 정상 1개 + 오류 1개만. 매장 접근 검사는 테스트 소스의 가짜 컨트롤러(`/api/stores/{storeId}/ping`)와 인터셉터 등록 설정을 `@Import`한 슬라이스에서. category 슬라이스는 store의 빈을 `excludeFilters`로 빼고 띄운다 (category 테스트가 store 내부를 import하지 않게, 2026-11-03) | ms |
 | 프레임워크 확인 | 0.3의 리스너 동작 (동기 실행, 예외 비전파, 미완료 기록, 재발행) | `frameworkcheck/ListenerBehaviorTest`. 일부러 실패하는 리스너를 테스트 소스에 두고 확인. 기능 테스트가 아니라 설계 전제의 확인 (2026-10-27 4건 통과) | 초 |
 
 **TDD 순서**
@@ -515,7 +528,7 @@ GET /api/stores/{id}   → get(id)    → 200 StoreInfo     없으면 ✗ 404 NO
 
 | 메서드 | 하는 일 | 규칙 검사 |
 |---|---|---|
-| `Store.register(name, type, today)` (정적) | 새 매장 생성 | 이름 규칙 |
+| `Store.register(name, type, today)` (정적) | 새 매장 생성 | 이름 규칙, 업종 필수 |
 | `update(name, type)` | 이름·업종 변경 | 이름 규칙. 업종은 바뀌어도 아무 일 없음 |
 
 - setter 없음. `registeredAt`을 바꾸는 메서드 없음
@@ -523,7 +536,7 @@ GET /api/stores/{id}   → get(id)    → 200 StoreInfo     없으면 ✗ 404 NO
 
 ### 1.5 테스트 목록 [검토]
 
-기획서 1장 검증 기준 18건 중 백엔드가 맡는 것. 나머지(버튼 비활성, 글자 수, 토스트, 리다이렉트, 가이드)는 프론트.
+기획서 1장 검증 기준 17건 중 백엔드가 맡는 것. 나머지(버튼 비활성, 글자 수, 토스트, 리다이렉트, 가이드)는 프론트.
 
 | 층 | `@DisplayName` |
 |---|---|
@@ -544,6 +557,14 @@ GET /api/stores/{id}   → get(id)    → 200 StoreInfo     없으면 ✗ 404 NO
 | HTTP | 매장 조회 - 없는 ID → 404 NOT_FOUND (store 자기 경로는 접근 검사에서 제외, 1.7) |
 | HTTP | 매장 접근 검사 - 없는 storeId 하위 경로(가짜 컨트롤러) → 404 STORE_NOT_FOUND |
 | HTTP | 매장 접근 검사 - 있는 storeId → 통과 |
+
+- 2026-11-01 구현하며 더함
+  - 단위: 전각 공백만 입력 → 거부 (자바 `trim()`은 전각 공백을 못 잘라 `strip()`을 씀). 이름 없음(null) → 거부 (요청 JSON에 name이 빠진 경우). 업종 비움 → 거부 (1.3 "업종 필수")
+  - 통합: 매장 목록 - 등록 전 0개, 등록 후 1개 (`GET /api/stores`)
+  - HTTP: 매장 등록 - 업종이 목록에 없음 → 400 VALIDATION
+- 2026-11-05 구현하며 더함
+  - 단위: 매장 정보 수정 - 빈 이름 → 거부 (수정도 이름 규칙을 지키는지. HTTP 테스트는 서비스가 가짜라 이걸 못 지킨다)
+  - HTTP: 매장 정보 수정 - 빈 이름 → 400 VALIDATION (PUT 경로도 입력 오류를 400으로 돌려주는지)
 
 ### 1.6 결정 사항 [검토]
 
@@ -593,8 +614,8 @@ CREATE TABLE store.stores (
   name          VARCHAR(50)  NOT NULL,
   store_type    VARCHAR(20)  NOT NULL,          -- CAFE / RESTAURANT / RETAIL / OTHER
   registered_at DATE         NOT NULL,
-  created_at    DATETIME     NOT NULL,
-  updated_at    DATETIME     NOT NULL
+  created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) CHARACTER SET utf8mb4;
 ```
 
@@ -608,7 +629,10 @@ moa/store/
     ├─ Store.java           애그리거트
     ├─ StoreRepository.java Spring Data
     ├─ StoreController.java
-    └─ StoreAccessInterceptor.java  /api/stores/{storeId}/** 매장 존재 검사 (Phase 2 로그인 검사 자리)
+    ├─ StoreAccessInterceptor.java  /api/stores/{storeId}/** 매장 존재 검사 (Phase 2 로그인 검사 자리)
+    └─ StoreWebConfig.java   인터셉터 등록. store 자기 경로(/api/stores/{id})는 제외
+
+resources/db/migration/store/V2__create_stores.sql
 ```
 
 ---
@@ -677,6 +701,8 @@ StoreRegisteredListener (커밋 후 · 같은 스레드 · 새 트랜잭션, 0.3
 - 이전 안 "비용 분류가 하나라도 있으면 무시"는 폐기 (2026-10-25). 실패 뒤 사용자가 하나만 추가해도 템플릿이 영영 안 생김
 - 실패하면 매장 등록은 201, 비용 분류는 빈 채로 → 재시작 때 재실행 (0.3, 2026-10-27 확정)
 - 적용 기록은 애그리거트가 아니라 리스너의 처리 기록 → 엔티티 하나로 간단히
+- 상한(20)으로 건너뛴 템플릿 노드는 다시 만들지 않는다. 적용 기록은 그대로 쓴다 (2026-11-03) → 왜: 재실행은 리스너가 예외로 끝났을 때만 일어난다 (0.3). 정상으로 끝나면 기록을 안 써도 재실행되지 않는다. 이 경우는 "템플릿 실패 + 사용자가 상위를 14개 넘게 먼저 만듦"뿐이고, 나머지는 사장님이 직접 추가하면 된다
+- 리스너는 서비스(`add`)를 부르지 않는다. 같은 이름이면 409 대신 합치거나 건너뛰어야 해서다. 대신 이름 규칙·형제 상한(`Category`)과 새 순서(`nextSortOrder`)는 서비스와 같은 것을 쓴다
 
 **분류 추가** `POST .../categories {parentId?, name}`
 
@@ -687,6 +713,7 @@ CategoryService.add
  ├ parentId 있음 (하위 추가)
  │   ├ 그 상위가 없음?                       ✗ 404 NOT_FOUND
  │   ├ 그 상위가 하위 분류?                   ✗ 409 CATEGORY_DEPTH           [밖]
+ │   ├ 그 상위가 꺼짐?                        ✗ 409 CATEGORY_PARENT_INACTIVE [밖]
  │   └ 그 상위의 하위가 이미 20개?             ✗ 409 CATEGORY_LIMIT           [밖]
  ├ Category.top(...) / Category.childOf(parent, ...)
  │   └ 앞뒤 공백 제거 → 비었거나 20자 초과?    ✗ 400 VALIDATION              [안]
@@ -696,7 +723,8 @@ CategoryService.add
  → CategoryAdded → 201 CategoryInfo
 ```
 
-- 형제 이름 비교는 공백을 제거한 이름으로 한다
+- 형제 이름 비교는 공백을 제거한 이름으로 한다. 영문 대소문자는 구분하지 않는다 ("Coffee" = "coffee". MySQL 정렬 규칙 `utf8mb4_0900_ai_ci`, D2-13)
+- 꺼진 상위 아래에는 추가할 수 없다 → 켜진 하위의 상위는 언제나 켜져 있다 (D2-12)
 - 상위와 하위는 다른 집합이라 같은 이름이어도 된다 ("식자재 > 기타"와 상위 "기타")
 
 **분류 이름 변경** `PATCH .../{id}/name {name}`
@@ -706,28 +734,30 @@ CategoryService.rename
  ├ 분류 없음?                               ✗ 404 NOT_FOUND
  ├ 앞뒤 공백 제거 → 비었거나 20자 초과?        ✗ 400 VALIDATION              [안]
  ├ 지금 이름과 같음?                          → 아무 일 없음. 이벤트 없음 → 200  [안]
- ├ 형제 중에 같은 이름 (꺼진 것 포함)?         ✗ 409 CATEGORY_NAME_DUPLICATE  [밖]
+ ├ 자신을 뺀 형제 중에 같은 이름 (꺼진 것 포함)? ✗ 409 CATEGORY_NAME_DUPLICATE  [밖]
  └ category.rename(name)
  ══ 커밋 ══
  → CategoryRenamed(oldName, newName) → 200 CategoryInfo
 ```
 
 - 비용은 분류 ID를 가리키므로, 이름을 바꾸면 비용 쪽 분류 표시도 함께 바뀐다 (기획서 2.5)
+- 중복 검사에서 자신을 뺀다 → 대소문자만 바꾸는 변경("Coffee" → "coffee")은 허용된다. 빼지 않으면 대소문자 무시(D2-13) 때문에 자신과 겹쳐 409가 된다 (2026-11-03 Muse 리뷰에서 발견)
 
 **분류 비활성화** `POST .../{id}/deactivate`
 
 ```
 CategoryService.deactivate
  ├ 분류 없음?                               ✗ 404 NOT_FOUND
- ├ 켜진 상위가 이것 하나뿐?                    ✗ 409 CATEGORY_LAST_ACTIVE     [밖]
- ├ 이미 꺼짐?                                → 아무 일 없음                  [안]
+ ├ 이미 꺼짐?                                → 아무 일 없음. 200 [], 이벤트 없음 [안]
+ ├ 켜진 상위이고, 켜진 상위가 이것 하나뿐?      ✗ 409 CATEGORY_LAST_ACTIVE     [밖]
  └ category.deactivate()
      └ 상위면 하위도 전부 deactivate()  (같은 트랜잭션, D0-2)                  [밖]
  ══ 커밋 ══
- → CategoryDeactivated(꺼진 ID 전부) → 200 {deactivatedIds}
+ → CategoryDeactivated(이번에 꺼진 ID) → 200 {deactivatedIds}
 ```
 
 - 꺼도 이미 입력된 비용은 그대로. 새 비용 입력 선택지에서만 빠진다 (기획서 2.5)
+- `deactivatedIds` = 이번 요청으로 꺼진 ID만. 이미 꺼져 있던 하위는 넣지 않는다 (2026-11-03)
 
 **분류 활성화** `POST .../{id}/activate`
 
@@ -747,15 +777,18 @@ CategoryService.activate
 ```
 CategoryService.delete
  ├ 분류 없음?                               ✗ 404 NOT_FOUND
- ├ 상위인데 하위가 있음?                       ✗ 409 CATEGORY_HAS_CHILDREN    [밖]
  ├ 누적 비용 1건 이상? (CategoryUsage)         ✗ 409 CATEGORY_IN_USE          [밖]
- ├ 켜진 상위가 이것 하나뿐?                    ✗ 409 CATEGORY_LAST_ACTIVE     [밖]
- └ 삭제
+ │   상위면 자신과 하위 전부를 합쳐 센다
+ ├ 켜진 상위이고, 켜진 상위가 이것 하나뿐?      ✗ 409 CATEGORY_LAST_ACTIVE     [밖]
+ └ 상위면 하위 전부 삭제 → 자신 삭제 (같은 트랜잭션)                           [밖]
  ══ 커밋 ══
  → 204                  이벤트 없음 (D2-6)
 ```
 
 - 기본 템플릿으로 만든 분류도 같은 규칙. 0건이면 삭제할 수 있다
+- 상위를 지우면 하위도 함께 지운다. 합쳐 0건일 때만이라 사라지는 비용이 없다 (**2026-11-03 변경**, D2-11. 이전: 하위가 있으면 삭제 불가)
+- 하위는 JPA cascade가 아니라 서비스가 리포지토리로 지운다 (JPA 최소 사용 규칙)
+- 하위나 꺼진 상위를 지울 때는 "켜진 상위 1개 이상" 검사를 하지 않는다. 켜진 상위 수가 줄지 않기 때문이다 (끄기도 같음)
 
 **분류 tree 조회** `GET .../categories?includeInactive=false`
 
@@ -782,10 +815,11 @@ categoryService.isActive(storeId, categoryId)
 ```
 CategoryService.move
  ├ 분류 없음 · 새 상위 없음?                  ✗ 404 NOT_FOUND
- ├ 옮기려는 게 하위 있는 상위?                 ✗ 409 CATEGORY_HAS_CHILDREN    [밖]
+ ├ 새 상위 = 지금 상위?                       → 아무 일 없음. 순서·이벤트 그대로 → 200 [안]
  ├ category.moveTo(newParent)
- │   ├ 자신이 상위?                          ✗ 거부 (코드는 구현 때)          [안]
- │   └ 새 상위가 하위 분류?                   ✗ 거부 (코드는 구현 때)          [안]
+ │   ├ 자신이 상위?                          ✗ 400 VALIDATION              [안]
+ │   └ 새 상위가 하위 분류?                   ✗ 400 VALIDATION              [안]
+ ├ 새 상위가 꺼짐?                           ✗ 409 CATEGORY_PARENT_INACTIVE [밖]
  ├ 새 상위의 하위가 이미 20개?                 ✗ 409 CATEGORY_LIMIT           [밖]
  └ 새 상위 아래에 같은 이름?                   ✗ 409 CATEGORY_NAME_DUPLICATE  [밖]
  → 새 상위 아래 끝 순서
@@ -794,6 +828,7 @@ CategoryService.move
 ```
 
 - 옮긴 분류로 입력된 비용은 분류 ID가 그대로라 영향 없다
+- 두 400은 화면에서 나올 수 없는 요청이다. 옮기기 메뉴는 하위 행에만 있고, 옮길 곳 목록에는 켜진 상위만 나온다 (2026-11-03, D2-15)
 
 **분류 tree Markdown 내보내기** (선택) `GET .../categories/export.md`
 
@@ -801,36 +836,39 @@ CategoryService.move
 켜진 비용 분류만 → Markdown 문자열 → 200 text/markdown (파일 내려받기)
 ```
 
-형식은 요구사항정의서 5.2와 같은 모양. Phase 2 AI 기학습 자료가 된다.
+형식은 기획서 2.5와 같다. 제목 한 줄 + 들여쓴 Markdown 목록. Phase 2 AI 기학습 자료가 된다.
 
-```
-식자재
-├─ 원두
-├─ 유제품
-└─ 기타 식자재
-임대료
+```markdown
+# 비용 분류
+
+- 식자재
+  - 원두
+  - 유제품
+  - 기타 식자재
+- 임대료
 ```
 
-- **확인 필요 (2026-10-27):** 기획서 2.5는 목록 형식(`- 식자재` / `  - 원두`)으로 적혀 있어 위와 다르다. 구현 전에 하나로 정한다
+- **형식 확정 (2026-11-03, D2-14):** `├─` 그림 대신 들여쓴 목록. 표준 Markdown이라 AI가 구조를 추측하지 않고 읽고, Phase 2 YAML 온톨로지와 들여쓰기 구조가 같다. 이전: tree 그림과 목록 중 "확인 필요"
 
 ### 2.3 규칙 [검토]
 
 | 규칙 | 안/밖 | 어기면 | 근거 |
 |---|---|---|---|
 | 이름 필수, 1~20자. 앞뒤 공백 제거. 공백만 불가 | 안 | 400 `VALIDATION` | 기획서 2.4, P2-1 |
-| 2단계까지. 하위 아래에는 추가 불가 | 안 (`childOf`) + 밖 (상위 조회 후 `isTop()`) | 409 `CATEGORY_DEPTH` | 기획서 2.4 |
+| 2단계까지. 하위 아래에는 추가 불가 | 밖 (상위 조회 후 `isTop()`) | 409 `CATEGORY_DEPTH` | 기획서 2.4 |
+| 이동할 곳은 상위여야 함 (선택) | 안 (`moveTo`) | 400 `VALIDATION` | 기획서 2.5 옮기기, D2-15 |
 | 같은 이름으로 이름 변경 → 아무 일 없음 (이벤트도 없음) | 안 | — | 기획서 2.5 |
 | 꺼진 걸 끄기 · 켜진 걸 켜기 → 아무 일 없음 | 안 | — | — |
-| 상위는 옮길 수 없음 (선택) | 안 (`moveTo`) | 거부 | 기획서 2.5 옮기기 |
-| 형제 간 이름 중복 불가. 꺼진 분류 포함. 상위끼리는 전체가 형제 | 밖 | 409 `CATEGORY_NAME_DUPLICATE` | 기획서 2.4, P2-5, P2-6 |
+| 상위는 옮길 수 없음 (선택) | 안 (`moveTo`) | 400 `VALIDATION` | 기획서 2.5 옮기기 |
+| 형제 간 이름 중복 불가. 꺼진 분류 포함. 상위끼리는 전체가 형제. 영문 대소문자 구분 없음 | 밖 | 409 `CATEGORY_NAME_DUPLICATE` | 기획서 2.4, P2-5, P2-6, P2-11 |
 | 상위 20개, 상위당 하위 20개. 꺼진 것 포함 | 밖 | 409 `CATEGORY_LIMIT` | 기획서 2.4, P2-8 |
 | 상위를 끄면 하위도 함께 꺼짐 (같은 트랜잭션) | 밖 | — | 기획서 2.5 끄기, D2-7 |
 | 하위를 켜려면 상위가 켜져 있어야 함 | 밖 | 409 `CATEGORY_PARENT_INACTIVE` | 기획서 2.5 켜기 |
+| 꺼진 상위 아래에는 하위를 추가·이동할 수 없음 | 밖 | 409 `CATEGORY_PARENT_INACTIVE` | 기획서 2.5 하위 분류 추가, P2-10 |
 | 상위를 켜도 하위는 그대로 | 밖 | — | 기획서 2.5 켜기 |
-| 켜진 상위 분류는 항상 1개 이상 | 밖 | 409 `CATEGORY_LAST_ACTIVE` | 기획서 2.4, P2-9 |
-| 하위가 있는 상위는 삭제 불가 | 밖 | 409 `CATEGORY_HAS_CHILDREN` | 기획서 2.5 삭제, P2-7 |
-| 누적 비용 1건 이상이면 삭제 불가 (끄기만) | 밖 (`CategoryUsage`) | 409 `CATEGORY_IN_USE` | 기획서 2.1, P2-7 |
-| 하위가 있는 상위는 이동 불가 (선택) | 밖 | 409 `CATEGORY_HAS_CHILDREN` | 기획서 2.5 옮기기 |
+| 켜진 상위 분류는 항상 1개 이상. 대상이 켜진 상위일 때만 검사 | 밖 | 409 `CATEGORY_LAST_ACTIVE` | 기획서 2.4, P2-9 |
+| 상위를 삭제하면 하위도 함께 삭제 (같은 트랜잭션) | 밖 | — | 기획서 2.5 삭제, P2-7 (2026-11-03 변경) |
+| 누적 비용 1건 이상이면 삭제 불가 (끄기만). 상위는 자신과 하위를 합쳐 셈 | 밖 (`CategoryUsage`) | 409 `CATEGORY_IN_USE` | 기획서 2.1 개요, P2-7 |
 | 기본 템플릿 분류도 위 규칙 그대로 | — | — | P2-7 |
 
 - 리포지토리로 어떻게 세는지는 2.7 "리포지토리 메서드"
@@ -842,7 +880,7 @@ CategoryService.move
 | 선택지 | 묶음 | 장점 | 단점 |
 |---|---|---|---|
 | **A. 노드 하나** | 분류 하나가 애그리거트. 상위는 `parentId`로 가리킴 | JPA 매핑이 가장 단순 (연관관계 없음). 조회·존재 확인이 가벼움 | 형제 중복·개수·최소 하나 같은 규칙이 애그리거트 밖(응용 서비스)으로 나감 |
-| B. tree 전체 | 매장의 분류 tree 전체가 애그리거트 하나 | 모든 규칙이 루트 안에 들어감. 책 3장의 모양 그대로 | `@OneToMany` 두 단계, 삭제에 orphanRemoval(cascade 계열) 필요 → JPA 최소 사용 규칙과 충돌. 하위 하나 고칠 때도 420개를 통째로 읽음 |
+| B. tree 전체 | 매장의 분류 tree 전체가 애그리거트 하나 | 모든 규칙이 루트 안에 들어감. 책 3장의 모양 그대로 | `@OneToMany` 두 단계, 삭제에 orphanRemoval(cascade 계열) 필요 → JPA 최소 사용 규칙과 충돌. 하위 하나 고칠 때도 규칙 확인에 tree를 읽어야 함 (쓰기는 변경 감지로 바뀐 행만) |
 
 **A를 채택한다.**
 - 규칙을 밖에 두는 비용 < JPA 복잡도를 피하는 이득. 11/02 JPA 체크포인트를 넘기기 쉬운 쪽
@@ -862,67 +900,106 @@ CategoryService.move
 |---|---|---|
 | `Category.top(storeId, name, sortOrder)` (정적) | 상위 분류 생성 | 이름 |
 | `Category.childOf(parent, name, sortOrder)` (정적) | 하위 분류 생성 | 이름. `parent.isTop()`이 아니면 거부 (2단계 초과) |
-| `rename(name)` | 이름 변경 | 이름. 같은 이름이면 아무 일 없음 (이벤트도 없음) |
+| `rename(name)` | 이름 변경. 바뀌었으면 true | 이름. 같은 이름이면 아무 일 없음 (false, 이벤트도 없음) |
 | `deactivate()` | 끄기 | 이미 꺼져 있으면 아무 일 없음 |
 | `activate()` | 켜기 | 이미 켜져 있으면 아무 일 없음 |
 | `moveTo(newParent)` (선택) | 다른 상위로 | 자신이 하위여야 하고, `newParent.isTop()`이어야 함 |
 | `isTop()`, `isChildOf(parent)` | 판별 | — |
 
+- 형제 상한 `MAX_SIBLINGS = 20`과 이름 규칙 `validName`은 `Category`에 두고, 서비스와 템플릿 리스너가 같이 쓴다 (2026-11-03 구현)
+- `childOf`의 `isTop()` 검사는 안전장치다. 깊이 규칙의 주인은 서비스의 검사(409 `CATEGORY_DEPTH`, 2.2)이고, 화면에서 온 요청은 거기서 먼저 걸린다. 서비스 검사를 빠뜨려도 3단계가 생기지 않게 막는 마지막 줄이라 400 `VALIDATION`으로 끝난다
+
 - setter 없음. 상태는 위 메서드로만 바뀐다
 
 ### 2.5 테스트 목록 [검토]
 
-기획서 2장 검증 기준 36건 중 백엔드가 맡는 것. 접기 상태, 입력란, 버튼 비활성, 확인창은 프론트.
+기획서 2장 검증 기준 39건(2026-11-03 기준) 중 백엔드가 맡는 것. 접기 상태, 입력란, 버튼 비활성, 확인창은 프론트.
+
+**있는 테스트** (2026-11-03 코드와 맞춤. 63개)
+
+| 층 | 클래스 | `@DisplayName` |
+|---|---|---|
+| 단위 | `CategoryTest` | 분류 추가 - 상위 생성, parentId 없음 |
+| 단위 | `CategoryTest` | 분류 추가 - 하위 생성, 상위를 가리킴 |
+| 단위 | `CategoryTest` | 분류 추가 - 하위 아래 추가 → 거부 (2단계 초과) |
+| 단위 | `CategoryTest` | 분류 추가 - 빈 이름 → 거부 (공백만 · 전각 공백만 · null 포함) |
+| 단위 | `CategoryTest` | 분류 추가 - 21자 → 거부 (20자는 허용) |
+| 단위 | `CategoryTest` | 분류 이름 변경 - 앞뒤 공백 제거 |
+| 단위 | `CategoryTest` | 분류 이름 변경 - 같은 이름 → 변경 없음 |
+| 단위 | `CategoryTest` | 분류 비활성화 - 켜짐에서 꺼짐 |
+| 단위 | `CategoryTest` | 분류 활성화 - 꺼짐에서 켜짐 |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 상위 추가 → tree 끝에, CategoryAdded 발행 |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 하위 추가 → 그 상위 아래 끝에, 경로 "식자재 > 시럽" |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 앞쪽 형제를 지운 뒤 추가해도 끝에 |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 없는 상위 → NOT_FOUND |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 하위 아래 추가 → CATEGORY_DEPTH |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 꺼진 상위 아래 → CATEGORY_PARENT_INACTIVE |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 형제 중복 → CATEGORY_NAME_DUPLICATE |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 대소문자만 다른 이름 → CATEGORY_NAME_DUPLICATE |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 다른 상위와는 중복 허용 |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 꺼진 분류와 중복 → CATEGORY_NAME_DUPLICATE |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 상위 20개 → CATEGORY_LIMIT |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 꺼진 것 포함 상위 20개 → CATEGORY_LIMIT |
+| 통합 | `CategoryServiceTest` | 분류 추가 - 하위 20개 → CATEGORY_LIMIT |
+| 통합 | `CategoryServiceTest` | 분류 이름 변경 - 정상, CategoryRenamed 발행 |
+| 통합 | `CategoryServiceTest` | 분류 이름 변경 - 중복 → CATEGORY_NAME_DUPLICATE |
+| 통합 | `CategoryServiceTest` | 분류 이름 변경 - 같은 이름 → 200, 이벤트 없음 |
+| 통합 | `CategoryServiceTest` | 분류 이름 변경 - 대소문자만 바꿈 → 바뀜, CategoryRenamed 발행 |
+| 통합 | `CategoryServiceTest` | 분류 비활성화 - 하위 없는 상위 → 꺼짐, CategoryDeactivated 발행 |
+| 통합 | `CategoryServiceTest` | 분류 비활성화 - 하위 있는 상위 → 하위도 함께 꺼짐 |
+| 통합 | `CategoryServiceTest` | 분류 비활성화 - 하위만 → 상위·형제는 그대로 |
+| 통합 | `CategoryServiceTest` | 분류 비활성화 - 마지막 상위 → CATEGORY_LAST_ACTIVE |
+| 통합 | `CategoryServiceTest` | 분류 비활성화 - 꺼진 상위가 있어도 켜진 상위가 하나뿐 → CATEGORY_LAST_ACTIVE |
+| 통합 | `CategoryServiceTest` | 분류 비활성화 - 이미 꺼짐 → 아무 일 없음, 이벤트 없음 |
+| 통합 | `CategoryServiceTest` | 분류 활성화 - 상위 켜기 → 하위는 여전히 꺼짐 |
+| 통합 | `CategoryServiceTest` | 분류 활성화 - 상위 켜진 하위 → 켜짐 |
+| 통합 | `CategoryServiceTest` | 분류 활성화 - 이미 켜짐 → 아무 일 없음 |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 0건 하위 → 삭제 |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 0건 상위, 하위 없음 → 삭제 |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 0건 상위와 하위 → 함께 삭제 |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 하위 중 하나라도 사용 → CATEGORY_IN_USE, 상위·하위 모두 남음 |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 상위 자신이 사용됨 → CATEGORY_IN_USE |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 마지막 상위 → CATEGORY_LAST_ACTIVE |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 꺼진 상위가 있어도 켜진 상위가 하나뿐 → CATEGORY_LAST_ACTIVE |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 꺼진 상위는 켜진 상위가 하나뿐이어도 → 삭제 |
+| 통합 | `CategoryServiceTest` | 분류 삭제 - 사용된 분류 → CATEGORY_IN_USE |
+| 통합 | `CategoryServiceTest` | 분류 tree 조회 - 상위 → 하위 순서, 경로·활성 여부·건수 |
+| 통합 | `CategoryServiceTest` | 분류 tree 조회 - 활성만 → 꺼진 것 제외 |
+| 통합 | `CategoryServiceTest` | 분류 존재 확인 - 켜진 분류 → true, 꺼진·없는 분류 → false |
+| 통합 | `CategoryServiceTest` | 분류 정보 - 요청한 ID의 경로, 건수는 0, 없는 ID는 빠짐 |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - StoreRegistered 수신 → 상위 7, 하위 9 생성, DefaultCategoriesCreated 발행 |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - 다른 업종 → 같은 템플릿 |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - 두 번 수신 → 두 번째는 무시 (적용 기록 있음) |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - 사용자가 분류를 먼저 추가했어도 적용 기록이 없으면 템플릿 생성 |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - 사용자가 "식자재"를 먼저 만들었으면 새로 만들지 않고 그 아래에 템플릿 하위를 넣음 (중복 없음) |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - 합칠 "식자재"가 꺼져 있으면 넣는 하위도 꺼진 상태 |
+| 통합 | `StoreRegisteredListenerTest` | 기본 분류 생성 - 상위가 이미 19개면 "식자재"만 넣고 나머지 상위는 건너뜀 |
+| 통합 | `StoreRegisteredListenerTest` | 분류 삭제 - 기본 템플릿 분류 0건 → 삭제 |
+| HTTP | `CategoryControllerTest` | 분류 추가 - 201과 본문 |
+| HTTP | `CategoryControllerTest` | 분류 삭제 - 사용 중 → 409 CATEGORY_IN_USE |
+| HTTP | `CategoryControllerTest` | 분류 삭제 - 204 |
+| HTTP | `CategoryControllerTest` | 분류 tree 조회 - 200과 목록, includeInactive 기본값은 false |
+| HTTP | `CategoryControllerTest` | 분류 이름 변경 - 200과 본문 |
+| HTTP | `CategoryControllerTest` | 분류 비활성화 - 200과 deactivatedIds |
+| HTTP | `CategoryControllerTest` | 분류 활성화 - 200과 본문 |
+
+- 경계 "category가 expense internal을 모름, 순환 없음"은 전체 `ModularityTest` 하나가 맡는다 (0.7)
+- 구현 때 더한 테스트: 빈 이름의 경우들, 앞 형제 삭제 뒤 순서, 없는 상위, 꺼진 것 포함 상한, 대소문자, 이미 켜짐·꺼짐, 켜진 상위 1개 조건, 상위 함께 삭제와 합산 건수, 템플릿의 상한 건너뛰기, `infoOf`, HTTP 5개
+
+**머지 전에 사용자가 쓰는 테스트 (필수)**
+
+| 층 | `@DisplayName` | 왜 |
+|---|---|---|
+| 통합 | 분류 활성화 - 상위 꺼진 하위 → CATEGORY_PARENT_INACTIVE | 모듈마다 사용자가 쓰는 조각 (시작 문서 6.1). `add`의 같은 검사를 `activate`에 따라 쓴다. 이 테스트가 초록이 되기 전에는 category PR을 머지하지 않는다 (PR은 draft) |
+
+**선택 기능의 테스트 (만들 때 함께)**
 
 | 층 | `@DisplayName` |
 |---|---|
-| 단위 | 분류 추가 - 상위 생성, parentId 없음 |
-| 단위 | 분류 추가 - 하위 생성, 상위를 가리킴 |
-| 단위 | 분류 추가 - 하위 아래 추가 → 거부 (2단계 초과) |
-| 단위 | 분류 추가 - 빈 이름 → 거부 |
-| 단위 | 분류 추가 - 21자 → 거부 (20자는 허용) |
-| 단위 | 분류 이름 변경 - 앞뒤 공백 제거 |
-| 단위 | 분류 이름 변경 - 같은 이름 → 변경 없음 |
-| 단위 | 분류 비활성화 - 켜짐에서 꺼짐 |
-| 단위 | 분류 활성화 - 꺼짐에서 켜짐 |
-| 단위 | 분류 이동 - 상위를 옮기려 함 → 거부 |
-| 통합 | 기본 분류 생성 - StoreRegistered 수신 → 상위 7, 하위 9 생성, DefaultCategoriesCreated 발행 |
-| 통합 | 기본 분류 생성 - 다른 업종 → 같은 템플릿 |
-| 통합 | 기본 분류 생성 - 두 번 수신 → 두 번째는 무시 (적용 기록 있음) |
-| 통합 | 기본 분류 생성 - 사용자가 분류를 먼저 추가했어도 적용 기록이 없으면 템플릿 생성 |
-| 통합 | 기본 분류 생성 - 사용자가 "식자재"를 먼저 만들었으면 새로 만들지 않고 그 아래에 템플릿 하위를 넣음 (중복 없음) |
-| 통합 | 기본 분류 생성 - 합칠 "식자재"가 꺼져 있으면 넣는 하위도 꺼진 상태 |
-| 통합 | 분류 추가 - 상위 추가 → tree 끝에, CategoryAdded 발행 |
-| 통합 | 분류 추가 - 하위 추가 → 그 상위 아래 끝에, 경로 "식자재 > 시럽" |
-| 통합 | 분류 추가 - 형제 중복 → CATEGORY_NAME_DUPLICATE |
-| 통합 | 분류 추가 - 다른 상위와는 중복 허용 |
-| 통합 | 분류 추가 - 꺼진 분류와 중복 → CATEGORY_NAME_DUPLICATE |
-| 통합 | 분류 추가 - 상위 20개 → CATEGORY_LIMIT |
-| 통합 | 분류 추가 - 하위 20개 → CATEGORY_LIMIT |
-| 통합 | 분류 이름 변경 - 정상, CategoryRenamed 발행 |
-| 통합 | 분류 이름 변경 - 중복 → CATEGORY_NAME_DUPLICATE |
-| 통합 | 분류 비활성화 - 하위 없는 상위 → 꺼짐, CategoryDeactivated 발행 |
-| 통합 | 분류 비활성화 - 하위 있는 상위 → 하위도 함께 꺼짐 |
-| 통합 | 분류 비활성화 - 하위만 → 상위·형제는 그대로 |
-| 통합 | 분류 비활성화 - 마지막 상위 → CATEGORY_LAST_ACTIVE |
-| 통합 | 분류 활성화 - 상위 켜기 → 하위는 여전히 꺼짐 |
-| 통합 | 분류 활성화 - 상위 꺼진 하위 → CATEGORY_PARENT_INACTIVE |
-| 통합 | 분류 활성화 - 상위 켜진 하위 → 켜짐 |
-| 통합 | 분류 삭제 - 0건 하위 → 삭제 |
-| 통합 | 분류 삭제 - 0건 상위, 하위 없음 → 삭제 |
-| 통합 | 분류 삭제 - 사용된 분류 → CATEGORY_IN_USE |
-| 통합 | 분류 삭제 - 하위 있는 상위 → CATEGORY_HAS_CHILDREN |
-| 통합 | 분류 삭제 - 기본 템플릿 분류 0건 → 삭제 |
-| 통합 | 분류 삭제 - 마지막 상위 → CATEGORY_LAST_ACTIVE |
-| 통합 | 분류 tree 조회 - 상위 → 하위 순서, 경로·활성 여부·건수 |
-| 통합 | 분류 tree 조회 - 활성만 → 꺼진 것 제외 |
-| 통합 | 분류 존재 확인 - 켜진 분류 → true, 꺼진·없는 분류 → false |
+| 단위 | 분류 이동 (선택) - 상위를 옮기려 함 → 거부 |
 | 통합 | 분류 이동 (선택) - 정상 → 새 상위 아래 끝 |
 | 통합 | 분류 이동 (선택) - 이름 충돌 → CATEGORY_NAME_DUPLICATE |
 | 통합 | Markdown 내보내기 (선택) - 켜진 것만, 형식 |
-| 경계 | 모듈 경계 - category가 expense internal을 모름, 순환 없음 |
-| HTTP | 분류 추가 - 201과 본문 |
-| HTTP | 분류 삭제 - 사용 중 → 409 CATEGORY_IN_USE |
 
 ### 2.6 결정 사항 [검토]
 
@@ -938,6 +1015,11 @@ CategoryService.move
 | D2-8 | 템플릿 멱등 처리 | **변경 (2026-10-25)** 적용 기록 테이블(`store_id` PK). 이전: "분류가 하나라도 있으면 무시" | Muse 리뷰. 이전 조건은 실패 후 수동 추가 시 템플릿 누락, 동시 재실행 중복을 못 막음 |
 | D2-9 | 비용 건수 임시 구현 | main에 `NoExpenseYet`(2주차엔 사실과 같음), 테스트는 `FakeCategoryUsage`. 3주차 완료 조건에 삭제 | Muse 리뷰. 테스트 가짜가 없으면 "사용 중 삭제 거부" 테스트가 2주차에 성립하지 않음 |
 | D2-10 | 템플릿과 사용자 분류의 이름 충돌 | **2026-10-25 추가** 리스너가 형제 이름을 확인해 같은 상위는 합치고 같은 하위는 건너뜀. 꺼진 상위에 합치면 하위도 꺼진 상태로 | Muse 리뷰. 리스너가 2.3 규칙을 우회하면 상위 중복이 생기고 DB가 못 막음 |
+| D2-11 | 상위 삭제 | **변경 (2026-11-03)** 하위도 함께 삭제. 상위와 하위를 합쳐 누적 0건일 때만. 서비스가 하위를 지움 (cascade 없음). 이전: 하위가 있으면 삭제 불가 (`CATEGORY_HAS_CHILDREN`, 코드 삭제) | 사용자 검토. 하위가 많으면 하나씩 지우기 불편. 0건이라 잃는 비용 없음. "상위를 끄면 하위도"와 같은 모양 |
+| D2-12 | 꺼진 상위 아래 추가·이동 | **2026-11-03 추가** 막음. `CATEGORY_PARENT_INACTIVE` | 사용자 검토 (구현 중 발견한 빈칸). 꺼진 상위 아래 켜진 하위가 생기면 "활성만" 조회에 상위 없는 하위가 보임. 하위 켜기와 같은 조건 |
+| D2-13 | 이름의 대소문자 | **2026-11-03** 구분 안 함 | MySQL 정렬 규칙이 이미 그렇게 비교. 형제가 대소문자만 다르면 헷갈림 |
+| D2-14 | Markdown 내보내기 형식 | **2026-11-03** 제목 `# 비용 분류` + 들여쓴 목록 | 사용자가 Claude에게 맡김. AI가 읽기 쉬운 표준 문법 |
+| D2-15 | 이동 거부 응답 | **2026-11-03** 400 `VALIDATION` | 화면에서 나올 수 없는 요청 (메뉴·목록이 막음). `childOf` 안전장치와 같은 처리 |
 
 ### 2.7 공개 API·이벤트·HTTP [참고]
 
@@ -948,7 +1030,7 @@ CategoryService.move
 | `tree(storeId, includeInactive)` | Long, boolean | `List<CategoryInfo>` 상위 → 그 하위 순서. 각 항목에 `expenseCount` 포함 | 컨트롤러 |
 | `add(storeId, parentId, name)` | Long, Long(null 가능), String | `CategoryInfo` | 컨트롤러 |
 | `rename(storeId, id, name)` | | `CategoryInfo` | 컨트롤러 |
-| `deactivate(storeId, id)` | | 꺼진 ID 목록 (하위 포함) | 컨트롤러 |
+| `deactivate(storeId, id)` | | 이번에 꺼진 ID 목록 (하위 포함). 이미 꺼져 있었으면 빈 목록 | 컨트롤러 |
 | `activate(storeId, id)` | | `CategoryInfo` | 컨트롤러 |
 | `delete(storeId, id)` | | — | 컨트롤러 |
 | `move(storeId, id, newParentId)` (선택) | | `CategoryInfo` | 컨트롤러 |
@@ -965,10 +1047,16 @@ CategoryService.move
 
 | 메서드 | 쓰는 규칙 |
 |---|---|
-| `existsByStoreIdAndParentIdAndName` | 형제 이름 중복 (상위끼리는 parentId null) |
-| `countByStoreIdAndParentId` | 개수 상한, 하위 있는 상위의 삭제·이동 불가, 새 분류의 순서 |
+| `findByIdAndStoreId` | 분류 하나 조회. 다른 매장의 분류는 없는 것과 같음 (404) |
+| `existsByStoreIdAndParentIdAndName` | 추가 때 형제 이름 중복 (상위끼리는 parentId null) |
+| `existsByStoreIdAndParentIdAndNameAndIdNot` | 이름 변경 때 형제 이름 중복. 자신은 뺀다 |
+| `countByStoreIdAndParentId` | 개수 상한 |
+| `nextSortOrder` (`default` 메서드) ← `findTopByStoreIdAndParentIdOrderBySortOrderDesc` | 새 분류의 순서 = 형제 중 가장 뒤 + 1. 형제 수로 정하면 앞 형제를 지운 뒤 번호가 겹친다 (2026-11-03 구현 때 테스트가 잡음) |
 | `countByStoreIdAndParentIdIsNullAndActiveTrue` | 켜진 상위 분류 최소 1개 |
-| 하위 목록 조회 (`findByStoreIdAndParentId`) | 상위를 끄면 하위도 |
+| `findByStoreIdAndParentId` | 상위를 끄면·지우면 하위도 |
+| `findByStoreIdAndParentIdAndName` | 템플릿을 넣을 때 같은 이름의 상위에 합치기 |
+| `findByStoreId` | tree 조회 |
+| `save`, `delete` | 저장, 삭제 |
 
 **이벤트**
 
@@ -977,8 +1065,8 @@ CategoryService.move
 | `DefaultCategoriesCreated` | `storeId`, `count` | 템플릿 생성 커밋 후 |
 | `CategoryAdded` | `storeId`, `categoryId`, `parentId`, `name` | 추가 커밋 후 |
 | `CategoryRenamed` | `storeId`, `categoryId`, `oldName`, `newName` | 이름 변경 커밋 후 (같은 이름이면 발행 안 함) |
-| `CategoryMoved` | `storeId`, `categoryId`, `oldParentId`, `newParentId` | 이동 커밋 후 |
-| `CategoryDeactivated` | `storeId`, `categoryIds` (하위 포함) | 비활성화 커밋 후 |
+| `CategoryMoved` | `storeId`, `categoryId`, `oldParentId`, `newParentId` | 이동 커밋 후. 이동(선택)을 만들 때 추가 |
+| `CategoryDeactivated` | `storeId`, `categoryIds` (이번에 꺼진 것, 하위 포함) | 비활성화 커밋 후. 이미 꺼져 있었으면 발행 안 함 |
 
 - Phase 1에서 수신하는 모듈은 없다. 발행 비용이 작고 Phase 2 AI 서비스가 tree 변화를 따라가는 데 쓰므로 요구사항정의서 목록대로 발행한다
 - 활성화·삭제 이벤트는 요구사항정의서에 없어 발행하지 않는다 (필요해지면 추가)
@@ -988,12 +1076,12 @@ CategoryService.move
 | 메서드 | 경로 | 요청 | 응답 | 오류 코드 |
 |---|---|---|---|---|
 | GET | `/` `?includeInactive=false` | — | 200 + `[CategoryInfo]` | — |
-| POST | `/` | `{parentId?, name}` | 201 + CategoryInfo | `VALIDATION`, `CATEGORY_NAME_DUPLICATE`, `CATEGORY_LIMIT`, `CATEGORY_DEPTH`, `NOT_FOUND`(상위) |
+| POST | `/` | `{parentId?, name}` | 201 + CategoryInfo | `VALIDATION`, `CATEGORY_NAME_DUPLICATE`, `CATEGORY_LIMIT`, `CATEGORY_DEPTH`, `CATEGORY_PARENT_INACTIVE`, `NOT_FOUND`(상위) |
 | PATCH | `/{id}/name` | `{name}` | 200 + CategoryInfo | `VALIDATION`, `CATEGORY_NAME_DUPLICATE`, `NOT_FOUND` |
 | POST | `/{id}/deactivate` | — | 200 + `{deactivatedIds}` | `CATEGORY_LAST_ACTIVE`, `NOT_FOUND` |
 | POST | `/{id}/activate` | — | 200 + CategoryInfo | `CATEGORY_PARENT_INACTIVE`, `NOT_FOUND` |
-| DELETE | `/{id}` | — | 204 | `CATEGORY_HAS_CHILDREN`, `CATEGORY_IN_USE`, `CATEGORY_LAST_ACTIVE`, `NOT_FOUND` |
-| PATCH | `/{id}/parent` (선택) | `{parentId}` | 200 + CategoryInfo | `CATEGORY_HAS_CHILDREN`, `CATEGORY_NAME_DUPLICATE`, `CATEGORY_LIMIT`, `NOT_FOUND` |
+| DELETE | `/{id}` | — | 204 | `CATEGORY_IN_USE`, `CATEGORY_LAST_ACTIVE`, `NOT_FOUND` |
+| PATCH | `/{id}/parent` (선택) | `{parentId}` | 200 + CategoryInfo | `VALIDATION`, `CATEGORY_PARENT_INACTIVE`, `CATEGORY_NAME_DUPLICATE`, `CATEGORY_LIMIT`, `NOT_FOUND` |
 | GET | `/export.md` (선택) | — | 200 `text/markdown` | — |
 
 ### 2.8 테이블·파일 [참고]
@@ -1006,8 +1094,8 @@ CREATE TABLE category.categories (
   name        VARCHAR(20)  NOT NULL,
   sort_order  INT          NOT NULL,
   active      TINYINT(1)   NOT NULL DEFAULT 1,
-  created_at  DATETIME     NOT NULL,
-  updated_at  DATETIME     NOT NULL,
+  created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_categories_store_parent (store_id, parent_id),
   UNIQUE KEY uk_categories_sibling_name (store_id, parent_id, name)
 ) CHARACTER SET utf8mb4;
@@ -1020,12 +1108,14 @@ CREATE TABLE category.template_applications (   -- 기본 분류 템플릿 적�
 
 - 유니크 키는 하위 분류의 중복만 DB가 막아 준다
 - MySQL은 `parent_id`가 NULL인 행끼리는 유니크를 비교하지 않는다 → 상위 분류의 중복은 코드(2.3)만 막는다. 사용자 1명이라 충분하다 (D2-4)
+- 이름 비교가 대소문자를 무시하는 건 utf8mb4 기본 정렬 규칙(`utf8mb4_0900_ai_ci`) 때문이다. 코드 검사와 유니크 키가 같은 규칙으로 비교한다 (D2-13)
+- 두 테이블 모두 `db/migration/category/V3__create_categories.sql` 한 파일
 
 ```
 moa/category/
 ├─ CategoryService.java
 ├─ CategoryInfo.java
-├─ CategoryEvents.java          레코드 5개
+├─ CategoryEvents.java          레코드 4개 (이동을 만들면 `CategoryMoved`를 더해 5개)
 ├─ CategoryUsage.java           인터페이스 (expense가 구현)
 └─ internal/
     ├─ Category.java
@@ -1034,10 +1124,16 @@ moa/category/
     ├─ CategoryTemplate.java
     ├─ StoreRegisteredListener.java
     ├─ TemplateApplication.java 템플릿 적용 기록 (멱등)
+    ├─ TemplateApplicationRepository.java
     └─ NoExpenseYet.java        CategoryUsage 임시 구현 (항상 0, 2주차엔 사실). **3주차 expense 완료 조건: 삭제**
 
 test/.../category/
-    └─ FakeCategoryUsage.java   분류 ID별 건수를 지정하는 가짜 ("사용된 분류 삭제 거부" 테스트용)
+├─ CategoryServiceTest.java     통합 (모듈 하나 + MySQL)
+├─ FakeCategoryUsage.java       분류 ID별 건수를 지정하는 가짜 ("사용된 분류 삭제 거부" 테스트용)
+└─ internal/
+    ├─ CategoryTest.java                 단위
+    ├─ StoreRegisteredListenerTest.java  통합 (기본 분류 생성)
+    └─ CategoryControllerTest.java       HTTP
 ```
 
 ---

@@ -76,4 +76,33 @@ class StoreTest {
         assertThatThrownBy(() -> Store.register("카페 모아", null, TODAY))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    @DisplayName("매장 정보 수정 - 이름 변경")
+    void updatesName() {
+        Store store = Store.register("카페 모아", StoreType.CAFE, TODAY);
+
+        store.update("카페 모아2", StoreType.CAFE);
+        assertThat(store.getName()).isEqualTo("카페 모아2");
+    }
+
+    @Test
+    @DisplayName("매장 정보 수정 - 업종 변경 → 등록일은 그대로")
+    void updatesType() {
+        Store store = Store.register("카페 모아", StoreType.CAFE, TODAY);
+
+        store.update("카페 모아", StoreType.RESTAURANT);
+        assertThat(store.getType()).isEqualTo(StoreType.RESTAURANT);
+        assertThat(store.getRegisteredAt()).isEqualTo(TODAY);
+    }
+
+    @Test
+    @DisplayName("매장 정보 수정 - 빈 이름 → 거부")
+    void updateRejectsEmptyName() {
+        Store store = Store.register("카페 모아", StoreType.CAFE, TODAY);
+
+        assertThatThrownBy(() -> store.update("", StoreType.CAFE))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(store.getName()).isEqualTo("카페 모아");
+    }
 }

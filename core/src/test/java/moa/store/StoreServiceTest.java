@@ -94,6 +94,17 @@ class StoreServiceTest {
         assertThat(storeService.findAll()).containsExactly(info);
     }
 
+    @Test
+    @DisplayName("매장 정보 수정 - 변경 후 조회에 반영")
+    void updateIsVisibleInGet() {
+        Long id = storeService.register("카페 모아", StoreType.CAFE).id();
+
+        storeService.update(id, "식당 모아", StoreType.RESTAURANT);
+
+        // get은 새 트랜잭션에서 DB를 다시 읽는다. save 없이도 변경 감지로 저장됐는지 확인
+        assertThat(storeService.get(id)).isEqualTo(new StoreInfo(id, "식당 모아", StoreType.RESTAURANT, TODAY));
+    }
+
     // "오늘"을 2026-10-28로 고정한다 (04 설계 D0-6)
     @TestConfiguration(proxyBeanMethods = false)
     static class FixedClock {
