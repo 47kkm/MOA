@@ -62,7 +62,7 @@ report ── 조회 ──▶ store · category · sales · expense · budget  
 | 1 | store | 초안 |
 | 2 | category | 초안 |
 | 3 | sales | 예정 (3주차) |
-| 4 | expense | 예정 (3주차) |
+| 4 | expense | 초안 (2026-11-06, 검토 전) |
 | 5 | budget | 예정 (4주차) |
 | 6 | report | 예정 (4주차) |
 
@@ -361,6 +361,7 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 | `CATEGORY_PARENT_INACTIVE` | 409 | category | 상위가 꺼진 하위를 켬. 꺼진 상위 아래에 하위를 추가·이동 | 2.2 분류 활성화 · 추가 · 이동 |
 | `CATEGORY_LAST_ACTIVE` | 409 | category | 마지막 켜진 상위를 끄거나 삭제 | 2.2 분류 비활성화 · 삭제 |
 | `CATEGORY_IN_USE` | 409 | category | 누적 비용 1건 이상인 분류를 삭제 (상위는 하위까지 합쳐) | 2.2 분류 삭제 |
+| `EXPENSE_CATEGORY_UNAVAILABLE` | 409 | expense | 고를 수 없는 비용 분류로 비용 등록·재분류 (없음 · 꺼짐 · 하위가 있는 상위). 기획서 4.5 "이 비용 분류는 쓸 수 없어요" (2026-11-06 초안) | 4.2 비용 등록 · 수정 |
 
 - 분류 이동(선택)의 두 거부(상위를 옮김, 하위 아래로 옮김)는 400 `VALIDATION`. 화면에서 나올 수 없는 요청이다 (2026-11-03, D2-15)
 - 각 장의 흐름 그림과 N.7 HTTP 표에도 코드를 그대로 적는다. 이 표는 "코드의 뜻", 각 장은 "어디서 나오나"
@@ -1140,7 +1141,386 @@ test/.../category/
 
 ## 3. sales 모듈 (예정, 3주차)
 
-## 4. expense 모듈 (예정, 3주차)
+## 4. expense 모듈
+
+- 상태: **초안 (2026-11-06)**. kei 검토 11/07 → Claude 구현 11/08
+- kei가 정할 것 7개는 4.6에 ★로 표시하고 추천을 적었다. 정해지면 ★를 지우고 결론을 적는다
+
+### 4.1 한눈에 [검토]
+
+```
+expense ── isSelectable · idsWithChildren · infoOf ──▶ category   비용 등록·재분류 때 "고를 수 있는 비용 분류인가", 목록 필터와 경로
+expense ── CategoryUsage 구현 ──▶ category                         비용 분류 삭제 때 "누적 비용 몇 건" (0.3 역전)
+expense ── ExpenseRegistered · Updated · Reclassified · Deleted ──▶ budget   소진액 갱신 (4주차)
+report ── 조회 ──▶ expense                                         기간·분류별 비용 합계 (4주차, ★ D4-11)
+```
+
+| 기능 | 우선순위 | 화면 |
+|---|---|---|
+| 비용 등록 · 비용 수정 · 비용 재분류 · 비용 삭제 · 비용 목록 조회 | 필수 | 비용 |
+| 기간·분류별 비용 합계 | 필수 | 없음 (report·budget이 호출). 만드는 때 ★ D4-11 |
+| 저장하고 계속 | 선택 | 비용. 화면만의 기능이라 백엔드는 비용 등록 그대로 |
+
+| 항목 | 내용 |
+|---|---|
+| 수신 이벤트 | 없음 |
+| 발행 이벤트 | `ExpenseRegistered`, `ExpenseUpdated`, `ExpenseReclassified`, `ExpenseDeleted` → budget (4주차). Phase 2 AI도 같은 이벤트를 받음 |
+| 다른 모듈 호출 | category 조회만 (0.3) |
+| 다른 모듈에 주는 것 | `CategoryUsage` 구현 (category가 정한 인터페이스) |
+| 스키마 | `expense` |
+
+### 4.2 기능 흐름 [검토]
+
+**비용 등록** `POST .../expenses {categoryId, amount, date, memo?}`
+
+```
+ExpenseService.register
+ ├ Expense.register(storeId, categoryId, amount, date, memo, 오늘)
+ │   ├ 비용 분류 없음 (null)?                          ✗ 400 VALIDATION   [안]
+ │   ├ 금액 1 미만 · 999,999,999 초과?                  ✗ 400 VALIDATION   [안]
+ │   ├ 날짜 없음 · 오늘보다 뒤?                          ✗ 400 VALIDATION   [안]
+ │   └ 메모: 앞뒤 공백 제거 → 200자 초과 · 줄바꿈?        ✗ 400 VALIDATION   [안]
+ ├ 고를 수 없는 비용 분류? (없음 · 꺼짐 · 하위가 있는 상위)  ✗ 409 EXPENSE_CATEGORY_UNAVAILABLE  [밖, category 조회]
+ └ 저장. 분류 주체 USER, 승인 true
+ ══ 커밋 ══
+ → ExpenseRegistered → 201 ExpenseInfo (비용 분류 경로 포함)
+```
+
+- 같은 날·같은 금액·같은 비용 분류여도 새 한 건이다. 중복 검사 없음 (기획서 4.1 "건별")
+- 메모가 공백뿐이면 메모 없음으로 저장
+- "오늘" = `Clock` (D0-6)
+- 예산 알림(80%·100%)은 이 응답에 없다. expense는 budget을 모른다 (D4-9)
+
+**비용 수정 · 비용 재분류** `PUT .../expenses/{id} {categoryId, amount, date, memo?}`
+
+화면은 둘을 구분하지 않는다 (기획서 4.5). 경로 하나로 받고, 비용 분류가 바뀌었는지는 서비스가 본다 (D4-1).
+
+```
+ExpenseService.update
+ ├ 비용 없음 (다른 매장 것 포함)?                         ✗ 404 NOT_FOUND
+ ├ 이전 값을 적어 둠 (날짜 · 금액 · 비용 분류)
+ ├ expense.change(categoryId, amount, date, memo, 오늘)
+ │   ├ 등록과 같은 입력 규칙                               ✗ 400 VALIDATION   [안]
+ │   └ 바뀐 것 없음?                                     → 아무 일 없음. 이벤트 없음 → 200  [안]
+ ├ 비용 분류가 바뀌었고, 새 비용 분류를 고를 수 없음?        ✗ 409 EXPENSE_CATEGORY_UNAVAILABLE  [밖]
+ │   거부되면 트랜잭션이 통째로 되돌아가 change도 저장되지 않음
+ ══ 커밋 ══
+ → 비용 분류가 바뀌었으면 ExpenseReclassified, 아니면 ExpenseUpdated (이전 · 이후 값, ★ D4-2) → 200 ExpenseInfo
+```
+
+- 비용 분류가 그대로면 꺼져 있어도 검사하지 않는다 → 꺼진 비용 분류의 비용도 금액·날짜·메모를 고칠 수 있다 (기획서 4.4, D4-6)
+- 다른 달로 옮겨도 막지 않는다. 그 달 목록으로 간다 (기획서 4.6)
+- 비용 분류를 바꾸면 분류 주체 USER, 승인 true (요구사항정의서 8.4. Phase 1은 늘 이 값)
+
+**비용 삭제** `DELETE .../expenses/{id}`
+
+```
+ExpenseService.delete
+ ├ 비용 없음?                ✗ 404 NOT_FOUND
+ └ 삭제
+ ══ 커밋 ══
+ → ExpenseDeleted (지운 비용의 날짜 · 금액 · 비용 분류) → 204
+```
+
+**비용 목록 조회** `GET .../expenses?yearMonth=2026-10&categoryId=`
+
+```
+ExpenseService.list(storeId, yearMonth, categoryId?)
+ ├ categoryId 없음 → 그 달 전부
+ └ categoryId 있음 → category에 "이것과 그 하위의 ID" (꺼진 것 포함) → 그 달 중 그 ID들만
+     상위면 자신 + 하위 전부 · 하위면 자신만 · 없는 ID면 빈 목록
+ → 날짜 역순. 같은 날은 나중에 입력한 것(id 큰 것)이 위
+ → 비용 분류 경로 · 꺼짐 여부를 category.infoOf로 한 번에
+ → 합계 · 건수 (필터 기준)
+ → 200 ExpenseList {yearMonth, total, count, items}
+```
+
+- 페이지 나누기 없음. 한 달 150건 안쪽 (기획서 P4-5)
+- 미래 달도 거부하지 않고 빈 목록을 준다. 막는 건 화면 (기획서 4.5)
+- 꺼진 비용 분류의 비용도 보인다. `categoryActive=false` → 화면이 "(꺼짐)"을 붙임
+
+**기간·분류별 비용 합계** (화면 없음. report·budget이 호출)
+
+```
+ExpenseService.totals(storeId, 기간)     ← 모양은 4주차 report·budget 설계 때 확정 (★ D4-11)
+ → 비용 분류 ID별 합계 + 상위별 합계 (하위 포함)
+```
+
+**누적 비용 건수** (`CategoryUsage` 구현. category가 비용 분류 삭제·tree 조회 때 부름)
+
+```
+CategoryUsageImpl.countByCategoryIds(storeId, categoryIds)
+ → 그 비용 분류들의 비용 전부 (기간 없음, 누적)
+ → 비용 분류 ID별 건수. 0건은 빠짐
+```
+
+- 이 구현이 들어오면 `NoExpenseYet`를 지운다 (0.3 완료 조건)
+- 둘 다 있으면 `CategoryService`에 넣을 빈이 둘이라 앱이 뜨지 않는다 → 지우는 걸 잊을 수 없다
+- 세는 방법은 D4-8
+
+### 4.3 규칙 [검토]
+
+| 규칙 | 안/밖 | 어기면 | 근거 |
+|---|---|---|---|
+| 비용 분류 필수 | 안 | 400 `VALIDATION` | 기획서 4.4 |
+| 금액 필수. 1 이상 999,999,999 이하 정수 | 안 | 400 `VALIDATION` | 기획서 4.4, P4-6 |
+| 날짜 필수. 오늘까지 (미래 불가) | 안 (오늘을 인자로 받음) | 400 `VALIDATION` | 기획서 4.4 |
+| 메모 선택. 0~200자. 앞뒤 공백 제거. 줄바꿈 불가 | 안 | 400 `VALIDATION` | 기획서 4.4 |
+| 고를 수 있는 비용 분류만: 있음 + 켜짐 + 하위가 있는 상위가 아님 | 밖 (category 조회) | 409 `EXPENSE_CATEGORY_UNAVAILABLE` | 기획서 4.4, P4-1, 요구사항정의서 8.4. ★ D4-3 |
+| 수정 때 비용 분류가 그대로면 위 검사를 하지 않음 (꺼진 것도 유지) | 밖 | — | 기획서 4.4 "꺼진 분류의 비용을 수정할 때" |
+| 바뀐 것 없는 수정 → 아무 일 없음, 이벤트 없음 | 안 | — | 비용 분류 이름 변경(2.3)과 같은 모양 |
+| 같은 내용 두 건 허용 | — | — | 기획서 4.1, 4.6 |
+| 다른 매장의 비용은 없는 것과 같음 | 밖 (`findByIdAndStoreId`) | 404 `NOT_FOUND` | 2.7과 같음 |
+| 분류 주체 USER, 승인 true (Phase 1) | 안 | — | 요구사항정의서 8.4, D4-7 |
+
+- 금액 상한(9자리)은 입력 규칙이라 `Expense`에 둔다. `Money`는 음수만 막는다 → 왜: 합계는 9자리를 넘을 수 있다 (0.8)
+
+### 4.4 애그리거트: Expense (비용 한 건) [검토]
+
+비용 한 건 = 애그리거트 하나. 다른 비용과 함께 바뀌는 일이 없어서 2.4처럼 범위를 고를 선택지가 없다.
+
+| 필드 | 타입 | 규칙 |
+|---|---|---|
+| `id` | Long | DB 생성 |
+| `storeId` | Long | ID 참조 |
+| `categoryId` | Long | ID 참조 (category). 하위, 또는 하위 없는 상위 |
+| `amount` | `Money` (★ D4-12. 늦으면 잠시 `long`) | 1 ~ 999,999,999 |
+| `expenseDate` | LocalDate | 오늘까지 |
+| `memo` | String, null 가능 | 0~200자. 공백뿐이면 null |
+| `classifiedBy` | `ClassifiedBy` (USER, AI) | Phase 1은 USER |
+| `approved` | boolean | USER면 true |
+
+| 메서드 | 하는 일 | 규칙 검사 (애그리거트 안) |
+|---|---|---|
+| `Expense.register(storeId, categoryId, amount, date, memo, today)` (정적) | 등록. 분류 주체 USER, 승인 true | 비용 분류 필수, 금액, 날짜, 메모 |
+| `change(categoryId, amount, date, memo, today)` | 수정·재분류 한 번에. 바뀌었으면 true | 등록과 같음. 비용 분류가 바뀌면 분류 주체 USER, 승인 true |
+| `snapshot()` | 지금의 날짜·금액·비용 분류 → 이벤트의 이전·이후 값 | — |
+
+- setter 없음. 상태는 위 메서드로만 바뀐다
+- "고를 수 있는 비용 분류인가"는 `Expense`가 판단하지 않는다. category를 봐야 해서 밖 규칙 (0.5)
+- `today`를 인자로 받는 이유: 애그리거트는 `Clock`을 모른다. 서비스가 `LocalDate.now(clock)`을 넘긴다 (`Store.register`의 등록일과 같은 방식)
+
+### 4.5 테스트 목록 [검토]
+
+기획서 4장 검증 기준 40건 중 백엔드가 맡는 것. 포커스, 버튼 비활성, 하위 줄 펼침, 패널, 토스트, 말줄임, 월 이동 버튼, 저장하고 계속은 프론트.
+
+**만들 테스트** (구현 전. ★가 정해지면 이름을 맞춘다)
+
+| 층 | 클래스 | `@DisplayName` |
+|---|---|---|
+| 단위 | `ExpenseTest` | 비용 등록 - 정상, 분류 주체 USER · 승인 true |
+| 단위 | `ExpenseTest` | 비용 등록 - 비용 분류 없음 → 거부 |
+| 단위 | `ExpenseTest` | 비용 등록 - 금액 0 · 음수 → 거부 |
+| 단위 | `ExpenseTest` | 비용 등록 - 10억 → 거부 (999,999,999는 허용) |
+| 단위 | `ExpenseTest` | 비용 등록 - 미래 날짜 → 거부 (오늘은 허용) |
+| 단위 | `ExpenseTest` | 비용 등록 - 메모 201자 → 거부 (200자는 허용) |
+| 단위 | `ExpenseTest` | 비용 등록 - 메모 앞뒤 공백 제거, 공백뿐이면 없음 |
+| 단위 | `ExpenseTest` | 비용 등록 - 메모 줄바꿈 → 거부 |
+| 단위 | `ExpenseTest` | 비용 수정 - 바뀐 것 없음 → 변경 없음 |
+| 단위 | `ExpenseTest` | 비용 수정 - 미래 날짜 → 거부, 값 그대로 |
+| 통합 | `ExpenseServiceTest` | 비용 등록 - 정상 → 저장, ExpenseRegistered 발행 |
+| 통합 | `ExpenseServiceTest` | 비용 등록 - 메모 없이 → 저장 |
+| 통합 | `ExpenseServiceTest` | 비용 등록 - 같은 내용 두 번 → 두 건 저장 |
+| 통합 | `ExpenseServiceTest` | 비용 등록 - 하위 없는 상위 → 저장 |
+| 통합 | `ExpenseServiceTest` | 비용 등록 - 하위 있는 상위 → EXPENSE_CATEGORY_UNAVAILABLE (★ D4-3) |
+| 통합 | `ExpenseServiceTest` | 비용 등록 - 꺼진 비용 분류 → EXPENSE_CATEGORY_UNAVAILABLE |
+| 통합 | `ExpenseServiceTest` | 비용 등록 - 없는 비용 분류 → EXPENSE_CATEGORY_UNAVAILABLE |
+| 통합 | `ExpenseServiceTest` | 비용 수정 - 금액·날짜 → 반영, ExpenseUpdated (이전·이후) |
+| 통합 | `ExpenseServiceTest` | 비용 수정 - 바뀐 것 없음 → 200, 이벤트 없음 |
+| 통합 | `ExpenseServiceTest` | 비용 수정 - 다른 달로 → 그 달 목록으로 옮겨짐 |
+| 통합 | `ExpenseServiceTest` | 비용 수정 - 꺼진 비용 분류 그대로 금액만 → 저장 |
+| 통합 | `ExpenseServiceTest` | 비용 수정 - 없는 비용 · 다른 매장의 비용 → NOT_FOUND |
+| 통합 | `ExpenseServiceTest` | 비용 재분류 - 정상 → ExpenseReclassified (이전·이후) |
+| 통합 | `ExpenseServiceTest` | 비용 재분류 - 꺼진 비용 분류에서 켜진 것으로 → 저장 |
+| 통합 | `ExpenseServiceTest` | 비용 재분류 - 꺼진 비용 분류로 → EXPENSE_CATEGORY_UNAVAILABLE, 값 그대로 |
+| 통합 | `ExpenseServiceTest` | 비용 재분류 - 비용 분류와 금액을 함께 → ExpenseReclassified 하나 (★ D4-2) |
+| 통합 | `ExpenseServiceTest` | 비용 삭제 - 정상 → 없어짐, ExpenseDeleted 발행 |
+| 통합 | `ExpenseServiceTest` | 비용 삭제 - 없는 비용 → NOT_FOUND |
+| 통합 | `ExpenseServiceTest` | 비용 목록 조회 - 그 달만, 날짜 역순, 같은 날은 나중 입력이 위, 합계·건수 |
+| 통합 | `ExpenseServiceTest` | 비용 목록 조회 - 상위 필터 → 하위 포함 |
+| 통합 | `ExpenseServiceTest` | 비용 목록 조회 - 하위 필터 → 그 하위만 |
+| 통합 | `ExpenseServiceTest` | 비용 목록 조회 - 꺼진 비용 분류의 비용 → 보임, 꺼짐 표시 |
+| 통합 | `ExpenseServiceTest` | 비용 목록 조회 - 결과 없음 → 빈 목록, 합계 0 |
+| 통합 | `ExpenseServiceTest` | 분류 삭제 - 비용이 있는 비용 분류 → CATEGORY_IN_USE (실제 비용으로) |
+| 통합 | `ExpenseServiceTest` | 분류 tree 조회 - 건수 = 실제 비용 건수 |
+| 통합 | `CategoryServiceTest` | 분류 선택 가능 확인 - 하위 · 하위 없는 켜진 상위 → true (★ D4-3) |
+| 통합 | `CategoryServiceTest` | 분류 선택 가능 확인 - 하위 있는 상위 · 꺼진 것 · 없는 것 → false (★ D4-3, D4-4) |
+| 통합 | `CategoryServiceTest` | 분류와 하위 ID - 상위 → 자신과 하위 전부 (꺼진 것 포함), 하위 → 자신만 |
+| HTTP | `ExpenseControllerTest` | 비용 등록 - 201과 본문 |
+| HTTP | `ExpenseControllerTest` | 비용 등록 - 금액 0 → 400 VALIDATION |
+| HTTP | `ExpenseControllerTest` | 비용 등록 - 고를 수 없는 비용 분류 → 409 EXPENSE_CATEGORY_UNAVAILABLE |
+| HTTP | `ExpenseControllerTest` | 비용 수정 - 200과 본문 |
+| HTTP | `ExpenseControllerTest` | 비용 삭제 - 204 |
+| HTTP | `ExpenseControllerTest` | 비용 목록 조회 - 200, yearMonth 없으면 400 VALIDATION |
+
+- 단위 10 · 통합 28 (category 쪽 3 포함) · HTTP 6 = 44개
+- 예산 선 넘김(기획서 4.6 마지막 비용 등록 행)은 budget(5장)과 프론트. expense는 `ExpenseRegistered` 발행까지
+- 경계 "expense → category 한 방향, category는 expense를 모름"은 전체 `ModularityTest` 하나가 맡는다 (0.7)
+- 기간·분류별 비용 합계의 테스트는 D4-11이 정해지면 더한다
+
+### 4.6 결정 사항 [검토]
+
+| # | 결정 | 결론 | 이유 |
+|---|---|---|---|
+| D4-1 | 수정·재분류의 경로 | `PUT .../{id}` 하나. 비용 분류가 바뀌었는지는 서비스가 봄 | 기획서 4.5 "화면에서는 구분하지 않는다". 요구사항정의서의 기능 이름 둘은 이벤트 이름과 테스트 이름에 남음 |
+| D4-2 ★ | 수정·재분류의 이벤트 모양 | **kei 결정 필요.** 추천: 저장 한 번 = 이벤트 하나. 비용 분류가 바뀌면 `ExpenseReclassified`, 아니면 `ExpenseUpdated`. 둘 다 이전·이후의 날짜·금액·비용 분류를 전부 담음 | 요구사항정의서 7.3은 Updated에 날짜·금액만, Reclassified에 비용 분류만 담는다 → 한 번 저장에 비용 분류와 금액을 같이 바꾸면 budget이 두 이벤트를 맞춰 봐야 함. 전부 담으면 budget은 "이전을 빼고 이후를 더함" 한 가지로 처리. 대안: 둘 다 바뀌면 이벤트 두 개 (요구사항정의서 그대로, budget이 복잡해짐) |
+| D4-3 ★ | "하위가 있는 상위는 고를 수 없다"를 백엔드 어디서 | **kei 결정 필요.** 추천: category에 공개 메서드 `isSelectable` 추가 (있음 + 켜짐 + 하위가 있는 상위가 아님). expense는 이것만 부름 | 지금 `isActive`는 하위가 있는 켜진 상위도 true. tree를 아는 건 category라 규칙도 category에. 대안 ① `isActive`의 뜻을 바꿈 → 이름과 뜻이 어긋남 ② expense가 tree를 받아 직접 판단 → 비용 분류 규칙이 expense로 샘 ③ 화면만 막음 → 요구사항정의서 8.4 "거부"와 어긋남 |
+| D4-4 ★ | 하위가 전부 꺼진 상위 | **kei 결정 필요.** 추천: 계속 고를 수 없음 (꺼진 하위도 "하위"). 화면은 켜진 하위가 없는 상위 버튼을 숨김 → 기획서 4.3에 한 줄 | 기획서 빈칸. 지금 기획서대로면 [식자재]를 눌러도 하위 줄이 비어 저장할 수 없다. 고를 수 있게 하면 하위를 다시 켰을 때 P4-1이 막으려던 "상위 직접 입력분"이 섞임 |
+| D4-5 ★ | 비용이 있는 "하위 없는 상위"에 하위를 새로 추가 | **kei 결정 필요.** 추천: 막지 않음. 이미 그 상위에 들어간 비용은 그대로 (목록에 "임대료"로 보임). 새 비용부터 하위를 고름 | 기획서 빈칸 (예: 비용 12건이 있는 "임대료" 아래에 "관리비" 추가). 막으면 하위를 쓰려고 상위를 끄고 새로 만들어야 함. 기존 비용을 하위로 옮기는 기능은 Phase 2 |
+| D4-6 | 꺼진 비용 분류의 비용 수정 | 비용 분류가 그대로면 검사하지 않음 | 기획서 4.4 |
+| D4-7 | 분류 주체·승인 칸 | 지금 둔다. Phase 1은 USER · true 고정 | 요구사항정의서 8.4. 데이터 구조라 지금 넣음 (작업 원칙 10). Phase 2 AI 분류가 이 칸을 씀 |
+| D4-8 | 누적 건수 세는 법 | 그 비용 분류들의 비용을 읽어 Java에서 셈 | DB에서 묶어 세려면(GROUP BY) JPQL이 필요 → JPA 최소 사용 규칙 밖. Phase 1 행 수는 1년에 2천 건 안쪽. 4주차 MyBatis 판단 때 다시 봄 |
+| D4-9 | 예산 알림(80%·100%) | expense 응답에 넣지 않음. 판단 방법은 5장 (기획서 P5-5) | expense는 budget을 모름. 넣으려면 expense → budget 의존이 생겨 순환 |
+| D4-10 | 응답·요청의 금액 | 숫자 하나 (`"amount": 35000`). `Money`를 JSON으로 그대로 내보내지 않음 | 프론트가 객체를 풀 필요 없음 |
+| D4-11 ★ | 기간·분류별 비용 합계를 만드는 때 | **kei 결정 필요.** 추천: 4주차 report·budget 설계와 함께 | 모양(기간 단위, 상위 합산을 누가 하나)이 받는 쪽에 달림. 지금 만들면 4주차에 고칠 가능성이 큼. 3주차 expense PR이 작아짐 |
+| D4-12 ★ | `Money`를 누가 먼저 쓰나 | **kei 결정 필요.** 아래 표 | 위치(`moa.shared`)는 0.8에서 정해짐. 남은 건 순서. sales(kei)와 expense(Claude)가 둘 다 11/08에 시작 |
+| D4-13 | Flyway 번호 | sales `V4`, expense `V5` | 같은 날 만들어 번호가 겹치지 않게 미리 나눔 (0.4 "번호는 전체에서 하나씩"). sales 테이블이 여럿이면 V4 한 파일에 (category V3처럼) |
+| D4-14 ★ | expense PR에서 kei가 할 것 | **kei 결정 필요.** 추천: 조각 없음, 질문 2개만 | 시작 문서 6.1의 조각은 AI가 짜는 1·2·4주차 규칙. 3주차는 sales 전체가 kei 손 |
+
+**D4-12 `Money` 순서 선택지**
+
+| 안 | 순서 | 좋은 점 | 나쁜 점 |
+|---|---|---|---|
+| A (추천) | kei가 11/08 sales 첫 순서로 `shared/Money`를 TDD → 그 커밋만 먼저 main에 (작은 PR) → expense가 그 위에서 | 값 타입을 kei가 직접 짬 (강의 섹션 10의 목표). 한 번만 씀 | expense가 kei 진도를 기다림 |
+| B | expense는 `long`으로 시작. kei의 `Money`가 main에 오면 바꿈 (정리 커밋) | 서로 안 기다림 | 금액 규칙이 잠시 두 곳. 바꾸는 일이 한 번 더 |
+| C | Claude가 expense에서 먼저 씀. kei는 가져다 씀 | 가장 빠름 | kei의 첫 TDD 대상이 사라짐 |
+
+- A를 추천. 11/08 오후까지 `Money`가 main에 없으면 B로 넘어감
+- **구현 때 주의 (2026-11-06 확인):** 0.8의 "`long` 필드 + `DECIMAL(15,0)` 칸"은 `ddl-auto: validate`에서 앱이 뜨지 않는다 (`found [decimal (Types#DECIMAL)], but expecting [bigint (Types#BIGINT)]`). 필드에 `@Column(columnDefinition = "DECIMAL(15,0)")`를 붙이면 통과한다 (임시 엔티티로 확인). 0.8 정정은 kei 확인 뒤
+
+### 4.7 공개 API·이벤트·HTTP [참고]
+
+**공개 API: ExpenseService**
+
+| 메서드 | 입력 | 출력 | 누가 쓰나 |
+|---|---|---|---|
+| `register(storeId, categoryId, amount, date, memo)` | Long, Long, long, LocalDate, String(null 가능) | `ExpenseInfo` | 컨트롤러 |
+| `update(storeId, id, categoryId, amount, date, memo)` | | `ExpenseInfo` | 컨트롤러 |
+| `delete(storeId, id)` | | — | 컨트롤러 |
+| `list(storeId, yearMonth, categoryId)` | Long, YearMonth, Long(null 가능) | `ExpenseList` | 컨트롤러 |
+| `totals(...)` | 4주차 (D4-11) | | report, budget |
+
+- `ExpenseInfo(id, categoryId, categoryPath, categoryActive, amount, date, memo)` 레코드. `amount`는 long (D4-10)
+- `ExpenseList(yearMonth, total, count, items)` 레코드
+- 금액은 서비스가 받아 `Money`로 바꿔 `Expense`에 넘긴다
+
+**category에 더하는 공개 메서드** (expense PR에서. ★ D4-3)
+
+| 메서드 | 출력 | 하는 일 |
+|---|---|---|
+| `isSelectable(storeId, categoryId)` | boolean | 있음 + 켜짐 + 하위가 있는 상위가 아님 (하위는 꺼진 것 포함, D4-4) |
+| `idsWithChildren(storeId, categoryId)` | `Set<Long>` | 상위면 자신 + 하위 전부 (꺼진 것 포함), 하위면 자신, 없으면 빈 집합 |
+
+- 하위 ID를 `tree`로 받지 않는 이유: `tree`는 누적 건수를 세느라 expense의 `CategoryUsageImpl`을 다시 부른다 (매장의 비용 전부를 읽음)
+- `isActive`는 expense가 쓰지 않게 된다. 4주차 report가 쓰지 않으면 지운다
+- 2.2 "분류 존재 확인"과 2.7 공개 API 표는 D4-3이 정해지면 고친다
+
+**`CategoryUsage` 구현** (0.3 역전)
+
+```java
+// moa/expense/internal/CategoryUsageImpl.java
+@Component
+class CategoryUsageImpl implements CategoryUsage {
+    // findByStoreIdAndCategoryIdIn으로 읽어 비용 분류 ID별로 센다 (D4-8)
+}
+```
+
+**리포지토리 메서드** (Spring Data 메서드 이름 쿼리)
+
+| 메서드 | 쓰는 규칙 |
+|---|---|
+| `findByIdAndStoreId` | 비용 하나 조회. 다른 매장의 비용은 없는 것과 같음 (404) |
+| `findByStoreIdAndExpenseDateBetweenOrderByExpenseDateDescIdDesc` | 목록 (필터 없음). 그 달 1일 ~ 말일 |
+| `findByStoreIdAndExpenseDateBetweenAndCategoryIdInOrderByExpenseDateDescIdDesc` | 목록 (비용 분류 필터) |
+| `findByStoreIdAndCategoryIdIn` | 누적 건수 (D4-8) |
+| `save`, `delete` | 저장, 삭제 |
+
+- 이름이 긴 건 JPQL을 쓰지 않는 값이다. 읽는 법: `find` + `By` + 조건 (`And`로 이음) + `OrderBy…Desc`
+
+**이벤트** (`ExpenseEvents.java`, 레코드)
+
+| 이벤트 | 내용 | 언제 |
+|---|---|---|
+| `ExpenseRegistered` | `storeId`, `expenseId`, `date`, `amount`, `categoryId` | 등록 커밋 후 |
+| `ExpenseUpdated` | `storeId`, `expenseId`, `before`, `after` (각각 `ExpenseSnapshot(date, amount, categoryId)`) | 비용 분류가 그대로인 수정 커밋 후 (★ D4-2) |
+| `ExpenseReclassified` | 위와 같음 | 비용 분류가 바뀐 수정 커밋 후 (★ D4-2) |
+| `ExpenseDeleted` | `storeId`, `expenseId`, `date`, `amount`, `categoryId` | 삭제 커밋 후 |
+
+- 바뀐 것 없는 수정은 발행하지 않는다
+- `amount`는 `Money` (D4-12에 따라 잠시 long)
+- 상위 합산(하위 → 상위)은 받는 쪽이 category를 보고 한다. 이벤트에는 비용이 가리키는 비용 분류 ID만 (요구사항정의서 7.3)
+
+**HTTP** (모든 경로는 `/api/stores/{storeId}/expenses` 아래. 매장 접근 검사 1.2를 지남)
+
+| 메서드 | 경로 | 요청 | 응답 | 오류 코드 |
+|---|---|---|---|---|
+| GET | `/` `?yearMonth=2026-10&categoryId=` | — | 200 + ExpenseList | `VALIDATION` (yearMonth 없음·형식) |
+| POST | `/` | `{categoryId, amount, date, memo?}` | 201 + ExpenseInfo | `VALIDATION`, `EXPENSE_CATEGORY_UNAVAILABLE` |
+| PUT | `/{id}` | `{categoryId, amount, date, memo?}` | 200 + ExpenseInfo | `VALIDATION`, `EXPENSE_CATEGORY_UNAVAILABLE`, `NOT_FOUND` |
+| DELETE | `/{id}` | — | 204 | `NOT_FOUND` |
+
+- `date`는 `"2026-10-19"`, `yearMonth`는 `"2026-10"`
+
+**통합 테스트 띄우는 법**
+
+- `@ApplicationModuleTest(mode = DIRECT_DEPENDENCIES)`로 category까지 띄운다 (구현 첫날 뜨는지 확인)
+- → 진짜 category로 "꺼진 비용 분류", "하위 있는 상위"를 만들고, 진짜 `CategoryUsageImpl`로 "분류 삭제 - 비용 있음"을 확인한다. category 쪽 가짜를 따로 만들지 않는다
+
+### 4.8 테이블·파일 [참고]
+
+```sql
+CREATE TABLE expense.expenses (
+  id             BIGINT AUTO_INCREMENT PRIMARY KEY,
+  store_id       BIGINT         NOT NULL,
+  category_id    BIGINT         NOT NULL,     -- category.categories.id. FK 없음 (0.4)
+  amount         DECIMAL(15,0)  NOT NULL,
+  expense_date   DATE           NOT NULL,
+  memo           VARCHAR(200)   NULL,
+  classified_by  VARCHAR(10)    NOT NULL,     -- USER (Phase 2: AI)
+  approved       TINYINT(1)     NOT NULL,
+  created_at     DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at     DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_expenses_store_date (store_id, expense_date),
+  INDEX idx_expenses_store_category (store_id, category_id)
+) CHARACTER SET utf8mb4;
+```
+
+- `db/migration/expense/V5__create_expenses.sql` (D4-13)
+- 인덱스 둘: 월 목록 (매장 + 날짜), 누적 건수 (매장 + 비용 분류)
+- `VARCHAR(200)`은 utf8mb4에서 글자 수 기준이라 메모 200자가 들어간다
+- `amount`: D4-12 표 아래 "구현 때 주의"
+
+```
+moa/expense/
+├─ ExpenseService.java
+├─ ExpenseInfo.java             비용 한 건 (목록 행)
+├─ ExpenseList.java             목록 + 합계·건수
+├─ ExpenseEvents.java           레코드 4개 + ExpenseSnapshot
+└─ internal/
+    ├─ Expense.java
+    ├─ ClassifiedBy.java        USER, AI
+    ├─ ExpenseRepository.java
+    ├─ ExpenseController.java
+    └─ CategoryUsageImpl.java   CategoryUsage 구현 (0.3)
+
+test/.../expense/
+├─ ExpenseServiceTest.java      통합 (expense + category + MySQL)
+└─ internal/
+    ├─ ExpenseTest.java         단위
+    └─ ExpenseControllerTest.java HTTP
+```
+
+**다른 모듈에서 바뀌는 것** (같은 PR)
+
+| 파일 | 변경 |
+|---|---|
+| `moa/shared/Money.java` | D4-12에 따라 |
+| `moa/shared/ErrorCode.java` | `EXPENSE_CATEGORY_UNAVAILABLE` (409) |
+| `moa/category/CategoryService.java` | `isSelectable`, `idsWithChildren` (★ D4-3) + 테스트 3개 |
+| `moa/category/internal/NoExpenseYet.java` | **삭제** (완료 조건) |
+| `test/.../category/internal/StoreRegisteredListenerTest.java` | `FakeCategoryUsage`를 넣음. 지금은 `NoExpenseYet`에 기대어 떠서, 지우면 `CategoryUsage` 빈이 없어 뜨지 않는다 |
+
+---
 
 ## 5. budget 모듈 (예정, 4주차)
 
