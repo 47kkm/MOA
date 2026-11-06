@@ -479,7 +479,12 @@ MOA/
 
 **체크포인트**
 
-- [ ] **2주차 말 (11/05) JPA 지속 여부 판단.** store·category 모듈(분류 tree 포함)이 Phase 1에서 JPA 난이도가 가장 높은 곳. 불편하면 MyBatis로 전환. 영속성 코드는 각 모듈 `internal/` 안에만 있어 전환 범위는 모듈 2개로 제한됨. **통과 기준 (2026-10-25):** ① store·category의 통합 테스트(모듈 하나 + Testcontainers)와 경계 테스트가 모두 통과, ② JPA 최소 사용 규칙 밖의 기능(양방향, cascade, JPQL)을 쓰지 않고 끝남, ③ 기능마다 낸 질문 중 엔티티 매핑·리포지토리에 관한 것에 사용자가 답할 수 있음. 셋 중 하나라도 아니면 MyBatis 전환을 검토
+- [x] **2주차 말 (11/05) JPA 지속 여부 판단.** store·category 모듈(분류 tree 포함)이 Phase 1에서 JPA 난이도가 가장 높은 곳. 불편하면 MyBatis로 전환. 영속성 코드는 각 모듈 `internal/` 안에만 있어 전환 범위는 모듈 2개로 제한됨. **통과 기준 (2026-10-25):** ① store·category의 통합 테스트(모듈 하나 + Testcontainers)와 경계 테스트가 모두 통과, ② JPA 최소 사용 규칙 밖의 기능(양방향, cascade, JPQL)을 쓰지 않고 끝남, ③ 기능마다 낸 질문 중 엔티티 매핑·리포지토리에 관한 것에 사용자가 답할 수 있음. 셋 중 하나라도 아니면 MyBatis 전환을 검토
+  - **결과 (2026-11-06, 하루 늦음): JPA 계속 (사용자 결정)**
+  - ① 전체 테스트 97개 통과 (store·category 통합, `ModularityTest` 포함)
+  - ② `src/main`에 양방향·cascade·JPQL 0건. 하위 삭제도 cascade 없이 서비스가 지움
+  - ③ 처음 틀린 것(테이블에 없는 필드 → `validate`로 앱 시작 실패, SQL 칸 이름)은 다시 물었을 때 맞힘. 규칙 자리(리포지토리로 세야 해서 서비스)는 이유를 맞힘
+  - 남은 약점: 변경 감지·`@Transactional` 범위. 3주차 준비 확인 ②와 sales 구현에서 다시 본다
 - [ ] **2주차 말 (11/05) 3주차 준비 확인 (2026-10-27 추가).** 3주차 sales는 사용자가 빈 파일에서 직접 짠다. JPA 체크포인트와 별개로, store 코드를 놓고 세 가지에 답할 수 있는지 본다. ① 빈이 뭐고 `StoreService`는 왜 리포지토리와 `Clock`을 생성자로 받나 ② `@Transactional`은 왜 `new`로 만든 객체에는 안 걸리나 (프록시) ③ `StoreInfo`는 왜 record이고 `StoreType`은 왜 enum인가. 막히면 3주차 전에 아래 학습 지도의 Spring 기초 행을 듣는다. 그래도 어려우면 sales 직접 구현 범위를 줄인다 (도메인·서비스는 사용자, 컨트롤러·HTTP 테스트는 AI). 이 확인은 MyBatis 전환과 무관
 - [ ] 4주차 리포트 PRD 진입 시 MyBatis 도입 여부 판단
 
