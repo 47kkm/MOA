@@ -1142,7 +1142,130 @@ test/.../category/
 
 ---
 
-## 3. sales 모듈 (예정, 3주차)
+## 3. sales 모듈
+
+- 상태: 설계 요약 (kei, 2026-11-07). 3.1·3.4·3.7은 kei, 나머지 절은 Claude가 채운다
+
+### 3.1 한눈에 [검토]
+
+```
+store ── StoreRegistered ──▶ sales       기본 결제수단 생성
+report ── 조회 ──▶ sales                  기간·결제수단별 매출 합계 (4주차)
+``` 
+
+| 기능 | 우선순위 | 화면 |
+|---|---|---|
+| 기본 결제수단 생성 | 필수 | 없음 (매장 등록 시 자동) |
+| 결제수단 추가·이름 변경·비활성화 | 필수 | 매출 화면 |
+| 결제수단 삭제 | 필수 | 매출 화면 |
+| 일 매출 기록(휴무 표시 포함) | 필수 | 매출 화면 |
+| 일 매출 수정 | 필수 | 매출 화면 |
+| 일 매출 삭제 | 필수 | 매출 화면 |
+| 일 매출 조회 | 필수 | 매출 화면 |
+
+### 3.2 기능 흐름 [검토]
+
+### 3.3 규칙 [검토]
+
+### 3.4 애그리거트 [검토]
+
+먼저 "무엇을 애그리거트로 볼 것인가"를 정해야 했다.
+
+**결제수단과 일 매출**
+
+| 선택지 | 묶음 | 장점 | 단점 |
+|---|---|---|---|
+| A. 따로 | 결제수단 하나가 애그리거트. 일 매출 하나가 애그리거트 | 결제수단을 고칠 때 그 하나만 읽고 저장 | 둘에 걸친 규칙(쓴 적 있으면 삭제 불가)이 애그리거트 밖(서비스)으로 나감 |
+| B. 같이 | 매장의 결제수단 목록 + 일 매출 전부가 한 애그리거트 | 둘에 걸친 규칙(쓴 적 있으면 삭제 불가)을 루트 한곳에서 검사 | 결제수단 이름 하나 바꿀 때도 덩어리 전체(일 매출 1년치 + 결제수단 목록)를 읽고 저장 |
+
+**A를 채택한다.**
+- 결제수단과 일 매출이 서로 의존적이지 않고, 서로의 변경에 영향을 주지 않음
+- 결제수단id 로 일 매출을 연결하면 결제수단 name 이 변경되어도 id 로 조회하면 문제 없음
+
+**매출 항목**
+
+| 선택지 | 묶음 | 장점 | 단점 |
+|---|---|---|---|
+| A. 일 매출 안 | 일 매출이 매출 항목을 포함한 하나의 애그리거트 | 합계·휴무 규칙을 한곳에서 지킴 | 줄 하나만 고쳐도 일 매출 전체를 읽고 저장. 다만 줄은 최대 10개라 부담이 작음 |
+| B. 따로 애그리거트 | 일 매출 하나가 애그리거트. 결제수단별 매출 항목이 애그리거트 | 줄 하나만 따로 고칠 수 있음 | 합계·휴무 규칙이 여러 객체에 흩어져서, 서비스가 그날 줄을 다 모아 지켜야 함 |
+
+**A를 채택한다.**
+- 매출 항목은 일 매출 없이는 의미가 없음
+- 일 매출 삭제 시 매출 항목도 삭제되어야 함
+- 합계는 줄들(lines)의 합이기 때문에 해당 규칙을 지키려면 한 애그리거트 안에서 함께 관리되어야 함
+
+**PaymentMethod (결제수단)**
+
+| 필드 | 타입 | 규칙 |
+|---|---|---|
+| `id` | Long | DB 생성. DailySales의 매출 항목이 이 값을 `paymentMethodId`로 보관 |
+| `storeId` | Long | ID 참조 |
+| `name` | String | 필수. 1~10자. 앞뒤 공백 제거. 공백만 불가 |
+| `active` | boolean | 켜짐/꺼짐 |
+
+| 메서드 | 하는 일 | 규칙 검사 (애그리거트 안) |
+|---|---|---|
+| `PaymentMethod.create(storeId, name)` (정적) | 결제수단 생성 | 이름 |
+| `rename(name)` | 결제수단 이름 변경 | 이름. 같은 이름이면 아무 일 없음 |
+| `activate()` | 켜기 | 이미 켜져 있으면 아무 일 없음 |
+| `deactivate()` | 끄기 | 이미 꺼져 있으면 아무 일 없음 |
+
+**DailySales (일 매출)**
+
+| 필드 | 타입 | 규칙 |
+|---|---|---|
+| `id` | Long | DB 생성. |
+| `storeId` | Long | ID 참조 |
+| `lines` | List<SalesLine> | 결제수단마다 한 줄 (같은 결제수단 두 줄 불가) |
+| `salesDate` | LocalDate | 미래 날짜 불가 (오늘까지). |
+| `closed` | boolean | true 이면 금액 전부 0 |
+
+| 메서드 | 하는 일 | 규칙 검사 (애그리거트 안) |
+|---|---|---|
+| `DailySales.create(storeId, lines, salesDate, closed)` (정적) | 일 매출 생성 | 중복 결제수단, 날짜, 휴무여부 |
+| `update(lines, closed)` | 일 매출 변경 | 중복 결제수단, 휴무여부 |
+| `getTotal()` | 일 매출 총액 계산 | - |
+
+**SalesLine (매출 항목. 일 매출 안의 값)**
+
+| 필드 | 타입 | 규칙 |
+|---|---|---|
+| `paymentMethodId` | Long | PaymentMethod 의 id 참조 |
+| `amount` | Money | 음수 불가. 최대 999,999,999  |
+
+### 3.5 테스트 목록 [검토]
+
+### 3.6 결정 사항 [검토]
+
+### 3.7 공개 API·이벤트·HTTP [참고]
+
+**공개 API: SalesService**
+
+| 메서드 | 입력 | 출력 | 누가 쓰나 |
+|---|---|---|---|
+| `getPaymentMethods(storeId, includeInactive)` | 입력 | `List<PaymentMethodInfo>` | 컨트롤러 |
+| `createPaymentMethod(storeId, name)` | 입력 | `PaymentMethodInfo` | 컨트롤러 |
+| `renamePaymentMethod(storeId, id, name)` | 입력 | `PaymentMethodInfo` | 컨트롤러 |
+| `activatePaymentMethod(storeId, id)` | 입력 | `PaymentMethodInfo` | 컨트롤러 |
+| `deactivatePaymentMethod(storeId, id)` | 입력 | `PaymentMethodInfo` | 컨트롤러 |
+| `deletePaymentMethod(storeId, id)` | 입력 | `-` | 컨트롤러 |
+| `createDailySales(storeId, date, lines, closed)` | 입력 | `DailySalesInfo` | 컨트롤러 |
+| `updateDailySales(storeId, date, lines, closed)` | 입력 | `DailySalesInfo` | 컨트롤러 |
+| `deleteDailySales(storeId, date)` | 입력 | `-` | 컨트롤러 |
+| `getDailySales(storeId, date)` | 입력 | `DailySalesInfo` | 컨트롤러 |
+| `getDailySalesByRange(storeId, startDate, endDate)` | 입력 | `List<DailySalesInfo>` | 컨트롤러 |
+| `getDailySalesTotal(storeId, startDate, endDate)` | 입력 | `DailySalesTotalInfo` | 컨트롤러, report |
+
+**이벤트**
+
+| 이벤트 | 내용 | 언제 |
+|---|---|---|
+| `DefaultPaymentMethodsCreated` | `storeId` | 기본 결제수단 생성 커밋 후 |
+| `DailySalesRecorded` | `storeId`, `date`, `total` | 일 매출 기록 커밋 후 |
+| `DailySalesUpdated` | `storeId`, `date`, `total` | 일 매출 수정 커밋 후 |
+| `DailySalesDeleted` | `storeId`, `date`, `total` | 일 매출 삭제 커밋 후 |
+
+### 3.8 테이블·파일 [참고]
 
 ## 4. expense 모듈
 
