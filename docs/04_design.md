@@ -1337,14 +1337,14 @@ CREATE TABLE sales.daily_sales_lines (
 
 | 파일 | 변경 |
 |---|---|
-| `moa/shared/Money.java` | ★ D4-12에 따라. 추천안이면 kei가 11/08 첫 작업으로 |
+| `moa/shared/Money.java` | kei가 11/08 첫 작업으로 작은 PR (D4-12 A) |
 | `moa/shared/ErrorCode.java` | 3.3의 새 오류 코드 |
 | store | 없음. `StoreRegistered`를 받기만 한다 |
 
 ## 4. expense 모듈
 
 - 상태: **초안 (2026-11-06, 11/07 가벼운 틀로 줄임)**. kei 검토 11/07 → Claude 구현 11/08
-- kei가 정할 것 7개는 4.6에 ★로 표시하고 추천을 적었다. 정해지면 ★를 지우고 결론을 적는다
+- kei가 정할 것 7개는 4.6에 ★로 표시하고 추천을 적었다. 정해지면 ★를 지우고 결론을 적는다. 남은 ★ 5개 (D4-3·D4-12는 2026-11-07 결정)
 
 ### 4.1 한눈에 [검토]
 
@@ -1411,7 +1411,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 | 금액 필수. 1 이상 999,999,999 이하 정수 | 안 | 400 `VALIDATION` | 기획서 4.4, P4-6 |
 | 날짜 필수. 오늘까지 (미래 불가) | 안 (오늘을 인자로 받음) | 400 `VALIDATION` | 기획서 4.4 |
 | 메모 선택. 0~200자. 앞뒤 공백 제거, 공백뿐이면 없음. 줄바꿈 불가 | 안 | 400 `VALIDATION` | 기획서 4.4 |
-| 고를 수 있는 비용 분류만: 있음 + 켜짐 + 하위가 있는 상위가 아님 | 밖 (category 조회) | 409 `EXPENSE_CATEGORY_UNAVAILABLE` | 기획서 4.4, P4-1, 요구사항정의서 8.4. ★ D4-3 |
+| 고를 수 있는 비용 분류만: 있음 + 켜짐 + 하위가 있는 상위가 아님 | 밖 (category 조회) | 409 `EXPENSE_CATEGORY_UNAVAILABLE` | 기획서 4.4, P4-1, 요구사항정의서 8.4. D4-3 |
 | 수정 때 비용 분류가 그대로면 위 검사를 하지 않음 | 밖 | — | 기획서 4.4, D4-6 |
 | 바뀐 것 없는 수정 → 아무 일 없음, 이벤트 없음 | 안 | — | 비용 분류 이름 변경(2.3)과 같은 모양 |
 | 같은 내용 두 건 허용 (중복 검사 없음) | — | — | 기획서 4.1 "건별", 4.6 |
@@ -1429,7 +1429,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 |---|---|---|
 | `id` · `storeId` | Long | DB 생성 · ID 참조 |
 | `categoryId` | Long | ID 참조 (category). 하위, 또는 하위 없는 상위 |
-| `amount` | `Money` (★ D4-12. 늦으면 잠시 `long`) | 1 ~ 999,999,999 |
+| `amount` | `Money` (D4-12 A. 11/08 오후까지 없으면 잠시 `long`) | 1 ~ 999,999,999 |
 | `expenseDate` | LocalDate | 오늘까지 |
 | `memo` | String, null 가능 | 0~200자 |
 | `classifiedBy` · `approved` | `ClassifiedBy` (USER, AI) · boolean | Phase 1은 USER · true |
@@ -1453,7 +1453,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 | 단위 | 비용 등록 - 미래 날짜 → 거부 (오늘은 허용) | 날짜 |
 | 단위 | 비용 등록 - 메모 201자 · 줄바꿈 → 거부, 공백뿐이면 없음 | 메모 |
 | 단위 | 비용 수정 - 바뀐 것 없음 → 변경 없음 | 바뀐 것 없는 수정 |
-| 통합 | 비용 등록 - 하위 있는 상위 · 꺼진 것 · 없는 것 → EXPENSE_CATEGORY_UNAVAILABLE | ★ D4-3 |
+| 통합 | 비용 등록 - 하위 있는 상위 · 꺼진 것 · 없는 것 → EXPENSE_CATEGORY_UNAVAILABLE | D4-3 |
 | 통합 | 비용 등록 - 같은 내용 두 번 → 두 건 저장 | 중복 허용 |
 | 통합 | 비용 수정 - 꺼진 비용 분류 그대로 금액만 → 저장 | D4-6 |
 | 통합 | 비용 재분류 - 꺼진 비용 분류로 → EXPENSE_CATEGORY_UNAVAILABLE, 값 그대로 | 되돌림 |
@@ -1461,7 +1461,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 | 통합 | 비용 수정 - 다른 매장의 비용 → NOT_FOUND | 매장 경계 |
 | 통합 | 비용 목록 조회 - 상위 필터 → 하위 포함 | 필터 |
 | 통합 | 분류 삭제 - 비용이 있는 비용 분류 → CATEGORY_IN_USE (실제 비용으로) | `CategoryUsage` 구현 |
-| 통합 | 분류 선택 가능 확인 - 하위 있는 상위 · 꺼진 것 · 없는 것 → false (category) | ★ D4-3, D4-4 |
+| 통합 | 분류 선택 가능 확인 - 하위 있는 상위 · 꺼진 것 · 없는 것 → false (category) | D4-3, ★ D4-4 |
 
 - 프론트 몫: 포커스, 버튼 비활성, 하위 줄 펼침, 토스트, 월 이동, 저장하고 계속, 예산 선 넘김 표시(budget과 함께)
 - 경계 "category는 expense를 모름"은 기존 `ModularityTest`가 맡는다
@@ -1472,7 +1472,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 |---|---|---|---|
 | D4-1 | 수정·재분류의 경로 | `PUT .../{id}` 하나. 비용 분류가 바뀌었는지는 서비스가 봄 | 기획서 4.5 "화면에서는 구분하지 않는다". 기능 이름 둘은 이벤트·테스트 이름에 남음 |
 | D4-2 ★ | 수정·재분류의 이벤트 모양 | **kei 결정 필요.** 추천: 저장 한 번 = 이벤트 하나 (비용 분류가 바뀌면 Reclassified, 아니면 Updated). 둘 다 이전·이후의 날짜·금액·비용 분류를 전부 담음 | 요구사항정의서 7.3대로면 비용 분류와 금액을 같이 바꿀 때 budget이 두 이벤트를 맞춰 봐야 함. 전부 담으면 "이전을 빼고 이후를 더함" 하나로 끝 |
-| D4-3 ★ | "하위가 있는 상위는 고를 수 없다"를 백엔드 어디서 | **kei 결정 필요.** 추천: category에 `isSelectable` 추가 (있음 + 켜짐 + 하위가 있는 상위가 아님) | 지금 `isActive`는 하위가 있는 상위도 true. tree를 아는 건 category. 대안: `isActive` 뜻 바꾸기(이름과 어긋남) · expense가 직접 판단(규칙이 샘) · 화면만 막기(요구사항 "거부"와 어긋남) |
+| D4-3 | "하위가 있는 상위는 고를 수 없다"를 백엔드 어디서 | **확정 (kei, 2026-11-07)** category에 `isSelectable` 추가 (있음 + 켜짐 + 하위가 있는 상위가 아님) | 지금 `isActive`는 하위가 있는 상위도 true. tree를 아는 건 category. 대안: `isActive` 뜻 바꾸기(이름과 어긋남) · expense가 직접 판단(규칙이 샘) · 화면만 막기(요구사항 "거부"와 어긋남) |
 | D4-4 ★ | 하위가 전부 꺼진 상위 | **kei 결정 필요.** 추천: 계속 고를 수 없음. 화면은 그 상위 버튼을 숨김 → 기획서 4.3에 한 줄 | 기획서 빈칸. 고를 수 있게 하면 하위를 다시 켰을 때 "상위 직접 입력분"이 섞임 (P4-1) |
 | D4-5 ★ | 비용이 있는 "하위 없는 상위"에 하위 추가 | **kei 결정 필요.** 추천: 막지 않음. 기존 비용은 상위에 그대로, 새 비용부터 하위 | 기획서 빈칸. 막으면 상위를 끄고 새로 만들어야 함. 기존 비용 옮기기는 Phase 2 |
 | D4-6 | 꺼진 비용 분류의 비용 수정 | 비용 분류가 그대로면 검사하지 않음 | 기획서 4.4 |
@@ -1481,7 +1481,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 | D4-9 | 예산 알림(80%·100%) | expense 응답에 넣지 않음. 5장에서 | 넣으면 expense → budget 의존 → 순환 |
 | D4-10 | 요청·응답의 금액 | 숫자 하나 (`"amount": 35000`) | 프론트가 객체를 풀 필요 없음 |
 | D4-11 ★ | 기간·분류별 비용 합계를 만드는 때 | **kei 결정 필요.** 추천: 4주차 report·budget 설계와 함께 | 모양이 받는 쪽에 달림. 지금 만들면 고칠 가능성이 큼 |
-| D4-12 ★ | `Money`를 누가 먼저 쓰나 | **kei 결정 필요.** 아래 표 | 위치(`moa.shared`)는 0.8에서 정해짐. sales와 expense가 둘 다 11/08 시작 |
+| D4-12 | `Money`를 누가 먼저 쓰나 | **확정 (kei, 2026-11-07)** 아래 표의 A | 위치(`moa.shared`)는 0.8에서 정해짐. sales와 expense가 둘 다 11/08 시작 |
 | D4-13 | Flyway 번호 | sales `V4`, expense `V5` | 같은 날 만들어 번호를 미리 나눔. `V5`가 먼저 머지되면 로컬 DB가 `V4`를 거부하므로 sales 쪽이 먼저 |
 | D4-14 ★ | expense PR에서 kei가 할 것 | **kei 결정 필요.** 추천: 조각 없음, 질문 2개만 | 6.1의 조각은 AI가 짜는 1·2·4주차 규칙. 3주차는 sales 전체가 kei 손 |
 
@@ -1489,7 +1489,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 
 | 안 | 순서 | 좋은 점 | 나쁜 점 |
 |---|---|---|---|
-| A (추천) | kei가 11/08 첫 순서로 `shared/Money` TDD → 작은 PR로 먼저 main에 → expense가 그 위에서 | 값 타입을 kei가 직접 짬 (섹션 10의 목표) | expense가 kei 진도를 기다림. 11/08 오후까지 없으면 B로 |
+| **A (채택)** | kei가 11/08 첫 순서로 `shared/Money` TDD → 작은 PR로 먼저 main에 → expense가 그 위에서 | 값 타입을 kei가 직접 짬 (섹션 10의 목표) | expense가 kei 진도를 기다림. 11/08 오후까지 없으면 B로 |
 | B | expense는 `long`으로 시작, `Money`가 오면 바꿈 | 서로 안 기다림 | 금액 규칙이 잠시 두 곳 |
 | C | Claude가 먼저 씀 | 가장 빠름 | kei의 첫 TDD 대상이 사라짐 |
 
@@ -1510,7 +1510,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 - `ExpenseInfo(id, categoryId, categoryPath, categoryActive, amount, date, memo)` 레코드. `amount`는 long (D4-10)
 - `CategoryUsage` 구현은 `internal/CategoryUsageImpl` (`@Component`). 들어오면 `NoExpenseYet`를 지운다. 둘 다 있으면 빈이 둘이라 앱이 뜨지 않아 잊을 수 없다
 
-**category에 더하는 공개 메서드** (★ D4-3)
+**category에 더하는 공개 메서드** (D4-3)
 
 | 메서드 | 출력 | 하는 일 |
 |---|---|---|
@@ -1566,9 +1566,9 @@ CREATE TABLE expense.expenses (
 
 | 파일 | 변경 |
 |---|---|
-| `moa/shared/Money.java` | D4-12에 따라 |
+| `moa/shared/Money.java` | 바뀌지 않음. kei의 PR이 먼저 머지됨 (D4-12 A). 11/08 오후까지 없으면 expense는 `long`으로 시작 |
 | `moa/shared/ErrorCode.java` | `EXPENSE_CATEGORY_UNAVAILABLE` (409) |
-| `moa/category/CategoryService.java` | `isSelectable`, `idsWithChildren` (★ D4-3) + 테스트 |
+| `moa/category/CategoryService.java` | `isSelectable`, `idsWithChildren` (D4-3) + 테스트 |
 | `moa/category/internal/NoExpenseYet.java` | **삭제** (완료 조건) |
 | `StoreRegisteredListenerTest` | `FakeCategoryUsage`를 넣음. 지금은 `NoExpenseYet`에 기대어 떠서, 지우면 뜨지 않는다 |
 
