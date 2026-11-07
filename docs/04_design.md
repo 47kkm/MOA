@@ -408,7 +408,7 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 
 | 값 객체 | 내용 | 규칙 |
 |---|---|---|
-| `Money` | `long amount` (원) | 음수 불가. `plus`, `minus`(결과 음수 허용은 호출자가 결정), `isZero`. JPA에서는 `@Embeddable`, 컬럼 `DECIMAL(15,0)` |
+| `Money` | `long amount` (원) | 음수 불가. `plus`, `minus`(결과 음수 허용은 호출자가 결정), `isZero`. JPA에서는 `@Embeddable`, 컬럼 `DECIMAL(15,0)`. 필드에 `@Column(columnDefinition = "DECIMAL(15,0)")` 필요 → 없으면 `validate`에서 앱이 뜨지 않음 (2026-11-06 확인, 2026-11-07 반영) |
 
 - `YearMonth`와 `LocalDate`는 Java 표준을 그대로 쓴다
 - ID는 `Long`. StoreId 같은 래퍼는 두지 않는다 → 왜: 토이 규모에서 얻는 것보다 JPA 매핑 부담이 큼
@@ -1330,7 +1330,7 @@ CREATE TABLE sales.daily_sales_lines (
 ```
 
 - `lines`는 `@ElementCollection` + `@CollectionTable(name = "daily_sales_lines", schema = "sales")` (강의 섹션 10)
-- `Money` 필드는 `@Column(columnDefinition = "DECIMAL(15,0)")`가 있어야 `validate`를 통과한다 (4.6 D4-12 아래 주의)
+- `Money` 필드는 `@Column(columnDefinition = "DECIMAL(15,0)")`가 있어야 `validate`를 통과한다 (0.8)
 - 기간 합계는 일 매출을 읽어 Java에서 더한다 (D4-8과 같음. 1년 365건)
 
 **다른 모듈에서 바뀌는 것**
@@ -1493,7 +1493,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 | B | expense는 `long`으로 시작, `Money`가 오면 바꿈 | 서로 안 기다림 | 금액 규칙이 잠시 두 곳 |
 | C | Claude가 먼저 씀 | 가장 빠름 | kei의 첫 TDD 대상이 사라짐 |
 
-- **구현 때 주의 (2026-11-06 확인):** 0.8의 "`long` 필드 + `DECIMAL(15,0)` 칸"은 `ddl-auto: validate`에서 앱이 뜨지 않는다 (`found [decimal], but expecting [bigint]`). 필드에 `@Column(columnDefinition = "DECIMAL(15,0)")`를 붙이면 통과 (임시 엔티티로 확인). 0.8 정정은 kei 확인 뒤
+- **구현 때 주의 (2026-11-06 확인):** 0.8의 "`long` 필드 + `DECIMAL(15,0)` 칸"은 `ddl-auto: validate`에서 앱이 뜨지 않는다 (`found [decimal], but expecting [bigint]`). 필드에 `@Column(columnDefinition = "DECIMAL(15,0)")`를 붙이면 통과 (임시 엔티티로 확인). 0.8에 반영 (2026-11-07)
 
 ### 4.7 공개 API·이벤트·HTTP [참고]
 
