@@ -1144,7 +1144,8 @@ test/.../category/
 
 ## 3. sales 모듈
 
-- 상태: 설계 요약 (kei, 2026-11-07). 3.1·3.4·3.7은 kei, 나머지 절은 Claude가 채운다
+- 상태: 설계 요약 (kei, 2026-11-07). 3.1·3.4·3.7(메서드·이벤트)은 kei. 3.6·3.7(타입)·3.8은 Claude (2026-11-07, kei 검토 전)
+- 아직: 3.2·3.3·3.5, 3.7 HTTP 표. 3.3 규칙(오류 코드)이 정해진 뒤에 쓴다
 
 ### 3.1 한눈에 [검토]
 
@@ -1237,24 +1238,48 @@ report ── 조회 ──▶ sales                  기간·결제수단별 �
 
 ### 3.6 결정 사항 [검토]
 
+| # | 결정 | 결론 | 이유 |
+|---|---|---|---|
+| D3-1 | 애그리거트 범위 | 결제수단 하나, 일 매출 하나 (3.4의 A) | kei 결정. 서로 바뀌어도 영향 없음. 일 매출은 결제수단을 id로 가리켜 이름이 바뀌어도 그대로 |
+| D3-2 | 매출 항목 | 일 매출 안의 값. id 없음. 고치면 줄을 전부 새로 갈아 끼움 | kei 결정. 일 매출 없이 의미 없고 같이 지워짐. `@ElementCollection`은 DB에서도 그 일 매출의 줄을 다 지우고 다시 넣는다. 최대 10줄이라 괜찮음 |
+| D3-3 | 합계 | 저장하지 않고 `getTotal()`이 매번 계산 | kei 결정. 저장하면 줄이 바뀔 때마다 합계도 따로 맞춰야 함. 계산하면 "합계 = 줄들의 합"이 저절로 지켜짐 |
+| D3-4 | 일 매출을 찾는 값 | `storeId` + 날짜. API에 일 매출 id를 쓰지 않음 | kei 결정. 매장마다 하루 한 건이라 날짜로 하나가 정해짐 |
+| D3-5 | 결제수단 순서 | 순서 칸 없음. 만든 순서(id 순) | kei 결정. 기획서에 순서 바꾸기가 없고, 추가하면 목록 끝에 생김 (기획서 3.5) |
+| D3-6 ★ | 결제수단 켜기 | **kei 결정 필요.** API에는 넣음 (`activatePaymentMethod`, 목록 `getPaymentMethods`). 추천: 요구사항정의서 8.3 기능 이름에도 "활성화"를 더하고 3.1 기능 표를 맞춤 | 요구사항정의서 8.3에는 켜기가 없음. 기획서에는 있음 (3.5 결제수단 관리 5번, P3-6 "비용 분류와 같은 규칙"). 비용 분류는 P2-2 때 요구사항정의서에 "분류 활성화"를 더함 |
+| D3-7 ★ | 금액 0인 줄 | **kei 결정 필요.** 추천: 저장하지 않음. 화면은 켜진 결제수단마다 금액을 보내고(비우면 0), 0인 줄은 버림. 휴무 날은 줄 0개 | 기획서 3.5 결제수단 관리 4번: 꺼도 "금액이 있는 날"의 패널에 남음. 0인 줄을 저장하면 0만 넣은 결제수단도 "쓴 적 있음"이 돼 삭제가 막힘. 대안: 저장하고 셀 때만 0을 뺌 (세는 곳마다 조건이 붙음) |
+| D3-8 ★ | 기간 조회의 미입력 날 | **kei 결정 필요.** 추천: 서버가 채움. 기간의 날짜를 날짜순으로 전부 돌려주고 미입력 날도 한 행. 오늘 뒤 날짜는 돌려주지 않음 | 요구사항정의서 8.3 일 매출 조회 "날짜순 31행 … 미입력 표시"가 서버의 수용 조건. 기간 합계의 미입력일수도 서버가 세야 함. 대안: 입력된 날만 주고 화면이 채움 (미입력 판단이 두 곳) |
+| D3-9 | 기본 결제수단 재실행 | 4개 이름 중 그 매장에 없는 것만 만듦. 10개가 차 있으면 건너뜀. 새로 만든 게 없으면 이벤트 없음 | 리스너는 다시 뜰 때 재실행될 수 있음 (0.3). 결제수단 이름은 DB 유니크가 온전히 막아서(비용 분류 상위의 NULL 문제가 없음, D2-4) 적용 기록 테이블(D2-8)은 두지 않음 |
+
 ### 3.7 공개 API·이벤트·HTTP [참고]
 
 **공개 API: SalesService**
 
 | 메서드 | 입력 | 출력 | 누가 쓰나 |
 |---|---|---|---|
-| `getPaymentMethods(storeId, includeInactive)` | 입력 | `List<PaymentMethodInfo>` | 컨트롤러 |
-| `createPaymentMethod(storeId, name)` | 입력 | `PaymentMethodInfo` | 컨트롤러 |
-| `renamePaymentMethod(storeId, id, name)` | 입력 | `PaymentMethodInfo` | 컨트롤러 |
-| `activatePaymentMethod(storeId, id)` | 입력 | `PaymentMethodInfo` | 컨트롤러 |
-| `deactivatePaymentMethod(storeId, id)` | 입력 | `PaymentMethodInfo` | 컨트롤러 |
-| `deletePaymentMethod(storeId, id)` | 입력 | `-` | 컨트롤러 |
-| `createDailySales(storeId, date, lines, closed)` | 입력 | `DailySalesInfo` | 컨트롤러 |
-| `updateDailySales(storeId, date, lines, closed)` | 입력 | `DailySalesInfo` | 컨트롤러 |
-| `deleteDailySales(storeId, date)` | 입력 | `-` | 컨트롤러 |
-| `getDailySales(storeId, date)` | 입력 | `DailySalesInfo` | 컨트롤러 |
-| `getDailySalesByRange(storeId, startDate, endDate)` | 입력 | `List<DailySalesInfo>` | 컨트롤러 |
-| `getDailySalesTotal(storeId, startDate, endDate)` | 입력 | `DailySalesTotalInfo` | 컨트롤러, report |
+| `getPaymentMethods(storeId, includeInactive)` | Long, boolean | `List<PaymentMethodInfo>` | 컨트롤러 |
+| `createPaymentMethod(storeId, name)` | Long, String | `PaymentMethodInfo` | 컨트롤러 |
+| `renamePaymentMethod(storeId, id, name)` | Long, Long, String | `PaymentMethodInfo` | 컨트롤러 |
+| `activatePaymentMethod(storeId, id)` | Long, Long | `PaymentMethodInfo` | 컨트롤러 |
+| `deactivatePaymentMethod(storeId, id)` | Long, Long | `PaymentMethodInfo` | 컨트롤러 |
+| `deletePaymentMethod(storeId, id)` | Long, Long | `-` | 컨트롤러 |
+| `createDailySales(storeId, date, lines, closed)` | Long, LocalDate, `List<SalesLineInput>`, boolean | `DailySalesInfo` | 컨트롤러 |
+| `updateDailySales(storeId, date, lines, closed)` | Long, LocalDate, `List<SalesLineInput>`, boolean | `DailySalesInfo` | 컨트롤러 |
+| `deleteDailySales(storeId, date)` | Long, LocalDate | `-` | 컨트롤러 |
+| `getDailySales(storeId, date)` | Long, LocalDate | `DailySalesInfo` | 컨트롤러 |
+| `getDailySalesByRange(storeId, startDate, endDate)` | Long, LocalDate, LocalDate | `List<DailySalesInfo>` | 컨트롤러 |
+| `getDailySalesTotal(storeId, startDate, endDate)` | Long, LocalDate, LocalDate | `DailySalesTotalInfo` | 컨트롤러, report |
+
+| 레코드 | 칸 |
+|---|---|
+| `PaymentMethodInfo` | `id`, `name`, `active` |
+| `SalesLineInput` (입력) | `paymentMethodId`, `amount` |
+| `SalesLineInfo` (출력) | `paymentMethodId`, `amount` |
+| `DailySalesInfo` | `date`, `closed`, `lines`(`List<SalesLineInfo>`), `total`. ★ D3-8 추천안이면 미입력 날을 알리는 칸 하나 더 |
+| `DailySalesTotalInfo` | `startDate`, `endDate`, `byPaymentMethod`(`List<SalesLineInfo>`), `total`, `openDays`, `closedDays`, `missingDays` |
+
+- 금액은 모두 long (D4-10과 같음). `SalesLine`은 `internal`이라 밖으로 내보내지 않는다
+- 매출 항목에 결제수단 이름은 담지 않는다 → 화면이 `getPaymentMethods(storeId, true)` 목록과 id로 맞춤. 이름을 바꾸면 과거 매출에도 바뀐 이름 (기획서 3.5 결제수단 관리 3번)
+- `getDailySalesTotal`은 4주차 report 설계 때 모양이 바뀔 수 있다 (D4-11과 같은 이유)
 
 **이벤트**
 
@@ -1265,7 +1290,56 @@ report ── 조회 ──▶ sales                  기간·결제수단별 �
 | `DailySalesUpdated` | `storeId`, `date`, `total` | 일 매출 수정 커밋 후 |
 | `DailySalesDeleted` | `storeId`, `date`, `total` | 일 매출 삭제 커밋 후 |
 
+- `date`는 LocalDate, `total`은 long. 네 이벤트 모두 Phase 1에는 받는 모듈이 없다 (요구사항정의서 7.3)
+
+**HTTP**: 3.3 규칙의 오류 코드가 정해진 뒤에 채운다
+
 ### 3.8 테이블·파일 [참고]
+
+`db/migration/sales/V4__create_sales.sql` (D4-13)
+
+```sql
+CREATE TABLE sales.payment_methods (
+  id          BIGINT       AUTO_INCREMENT PRIMARY KEY,
+  store_id    BIGINT       NOT NULL,
+  name        VARCHAR(10)  NOT NULL,
+  active      TINYINT(1)   NOT NULL DEFAULT 1,
+  created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_payment_methods_store_name (store_id, name)    -- 꺼진 것 포함 중복 불가 (요구사항정의서 8.3)
+) CHARACTER SET utf8mb4;
+
+CREATE TABLE sales.daily_sales (
+  id          BIGINT       AUTO_INCREMENT PRIMARY KEY,
+  store_id    BIGINT       NOT NULL,
+  sales_date  DATE         NOT NULL,
+  closed      TINYINT(1)   NOT NULL,
+  created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_daily_sales_store_date (store_id, sales_date)  -- 하루 한 건. 기간 조회도 이 인덱스
+) CHARACTER SET utf8mb4;
+
+-- 매출 항목. 일 매출 안의 값이라 id가 없다 (D3-2)
+CREATE TABLE sales.daily_sales_lines (
+  daily_sales_id     BIGINT         NOT NULL,   -- FK 없음 (같은 모듈이어도 규칙은 코드에, 2.8과 같음)
+  payment_method_id  BIGINT         NOT NULL,
+  amount             DECIMAL(15,0)  NOT NULL,
+  PRIMARY KEY (daily_sales_id, payment_method_id),     -- 같은 결제수단 두 줄을 DB도 막음
+  INDEX idx_lines_payment_method (payment_method_id)   -- 결제수단 삭제 전 "쓴 적 있나"
+);
+```
+
+- `lines`는 `@ElementCollection` + `@CollectionTable(name = "daily_sales_lines", schema = "sales")` (강의 섹션 10)
+- `Money` 필드는 `@Column(columnDefinition = "DECIMAL(15,0)")`가 있어야 `validate`를 통과한다 (4.6 D4-12 아래 주의)
+- 기간 합계는 일 매출을 읽어 Java에서 더한다 (D4-8과 같음. 1년 365건)
+
+**다른 모듈에서 바뀌는 것**
+
+| 파일 | 변경 |
+|---|---|
+| `moa/shared/Money.java` | ★ D4-12에 따라. 추천안이면 kei가 11/08 첫 작업으로 |
+| `moa/shared/ErrorCode.java` | 3.3의 새 오류 코드 |
+| store | 없음. `StoreRegistered`를 받기만 한다 |
 
 ## 4. expense 모듈
 
