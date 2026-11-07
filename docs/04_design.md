@@ -1223,7 +1223,7 @@ report ── 조회 ──▶ sales                  기간·결제수단별 �
 
 | 메서드 | 하는 일 | 규칙 검사 (애그리거트 안) |
 |---|---|---|
-| `DailySales.create(storeId, lines, salesDate, closed)` (정적) | 일 매출 생성 | 중복 결제수단, 날짜, 휴무여부 |
+| `DailySales.create(storeId, lines, salesDate, closed, today)` (정적) | 일 매출 생성 | 중복 결제수단, 날짜, 휴무여부 |
 | `update(lines, closed)` | 일 매출 변경 | 중복 결제수단, 휴무여부 |
 | `getTotal()` | 일 매출 총액 계산 | - |
 
@@ -1257,12 +1257,12 @@ report ── 조회 ──▶ sales                  기간·결제수단별 �
 | 메서드 | 입력 | 출력 | 누가 쓰나 |
 |---|---|---|---|
 | `getPaymentMethods(storeId, includeInactive)` | Long, boolean | `List<PaymentMethodInfo>` | 컨트롤러 |
-| `createPaymentMethod(storeId, name)` | Long, String | `PaymentMethodInfo` | 컨트롤러 |
+| `addPaymentMethod(storeId, name)` | Long, String | `PaymentMethodInfo` | 컨트롤러 |
 | `renamePaymentMethod(storeId, id, name)` | Long, Long, String | `PaymentMethodInfo` | 컨트롤러 |
 | `activatePaymentMethod(storeId, id)` | Long, Long | `PaymentMethodInfo` | 컨트롤러 |
 | `deactivatePaymentMethod(storeId, id)` | Long, Long | `PaymentMethodInfo` | 컨트롤러 |
 | `deletePaymentMethod(storeId, id)` | Long, Long | `-` | 컨트롤러 |
-| `createDailySales(storeId, date, lines, closed)` | Long, LocalDate, `List<SalesLineInput>`, boolean | `DailySalesInfo` | 컨트롤러 |
+| `recordDailySales(storeId, date, lines, closed)` | Long, LocalDate, `List<SalesLineInput>`, boolean | `DailySalesInfo` | 컨트롤러 |
 | `updateDailySales(storeId, date, lines, closed)` | Long, LocalDate, `List<SalesLineInput>`, boolean | `DailySalesInfo` | 컨트롤러 |
 | `deleteDailySales(storeId, date)` | Long, LocalDate | `-` | 컨트롤러 |
 | `getDailySales(storeId, date)` | Long, LocalDate | `DailySalesInfo` | 컨트롤러 |
