@@ -1344,7 +1344,7 @@ CREATE TABLE sales.daily_sales_lines (
 ## 4. expense 모듈
 
 - 상태: **초안 (2026-11-06, 11/07 가벼운 틀로 줄임)**. kei 검토 11/07 → Claude 구현 11/08
-- kei가 정할 것 7개는 4.6에 ★로 표시하고 추천을 적었다. 정해지면 ★를 지우고 결론을 적는다. 남은 ★ 5개 (D4-3·D4-12는 2026-11-07 결정)
+- kei가 정할 것 7개는 4.6에 ★로 표시하고 추천을 적었다. 정해지면 ★를 지우고 결론을 적는다. 7개 모두 2026-11-07 결정 (전부 추천안)
 
 ### 4.1 한눈에 [검토]
 
@@ -1352,13 +1352,13 @@ CREATE TABLE sales.daily_sales_lines (
 expense ── isSelectable · idsWithChildren · infoOf ──▶ category   비용 등록·재분류 때 "고를 수 있는 비용 분류인가", 목록 필터와 경로
 expense ── CategoryUsage 구현 ──▶ category                         비용 분류 삭제 때 "누적 비용 몇 건" (0.3 역전)
 expense ── ExpenseRegistered · Updated · Reclassified · Deleted ──▶ budget   소진액 갱신 (4주차)
-report ── 조회 ──▶ expense                                         기간·분류별 비용 합계 (4주차, ★ D4-11)
+report ── 조회 ──▶ expense                                         기간·분류별 비용 합계 (4주차, D4-11)
 ```
 
 | 기능 | 우선순위 | 화면 |
 |---|---|---|
 | 비용 등록 · 비용 수정 · 비용 재분류 · 비용 삭제 · 비용 목록 조회 | 필수 | 비용 |
-| 기간·분류별 비용 합계 | 필수 | 없음 (report·budget이 호출). 만드는 때 ★ D4-11 |
+| 기간·분류별 비용 합계 | 필수 | 없음 (report·budget이 호출). 4주차 (D4-11) |
 | 저장하고 계속 | 선택 | 비용. 화면만의 기능이라 백엔드는 비용 등록 그대로 |
 
 - 받는 이벤트 없음 · 다른 모듈 호출은 category 조회만 · 스키마 `expense`
@@ -1382,7 +1382,7 @@ ExpenseService.update
  ├ 비용 분류가 바뀌었고, 새 비용 분류를 고를 수 없음?        ✗ 409 EXPENSE_CATEGORY_UNAVAILABLE  [밖]
  │   거부되면 트랜잭션이 통째로 되돌아가 change도 저장되지 않음
  ══ 커밋 ══
- → 비용 분류가 바뀌었으면 ExpenseReclassified, 아니면 ExpenseUpdated (이전 · 이후 값, ★ D4-2) → 200
+ → 비용 분류가 바뀌었으면 ExpenseReclassified, 아니면 ExpenseUpdated (이전 · 이후 값, D4-2) → 200
 ```
 
 - 비용 분류가 그대로면 꺼져 있어도 검사하지 않는다 → 꺼진 비용 분류의 비용도 금액·날짜·메모를 고칠 수 있다 (D4-6)
@@ -1457,11 +1457,11 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 | 통합 | 비용 등록 - 같은 내용 두 번 → 두 건 저장 | 중복 허용 |
 | 통합 | 비용 수정 - 꺼진 비용 분류 그대로 금액만 → 저장 | D4-6 |
 | 통합 | 비용 재분류 - 꺼진 비용 분류로 → EXPENSE_CATEGORY_UNAVAILABLE, 값 그대로 | 되돌림 |
-| 통합 | 비용 재분류 - 비용 분류와 금액을 함께 → ExpenseReclassified 하나 | ★ D4-2 |
+| 통합 | 비용 재분류 - 비용 분류와 금액을 함께 → ExpenseReclassified 하나 | D4-2 |
 | 통합 | 비용 수정 - 다른 매장의 비용 → NOT_FOUND | 매장 경계 |
 | 통합 | 비용 목록 조회 - 상위 필터 → 하위 포함 | 필터 |
 | 통합 | 분류 삭제 - 비용이 있는 비용 분류 → CATEGORY_IN_USE (실제 비용으로) | `CategoryUsage` 구현 |
-| 통합 | 분류 선택 가능 확인 - 하위 있는 상위 · 꺼진 것 · 없는 것 → false (category) | D4-3, ★ D4-4 |
+| 통합 | 분류 선택 가능 확인 - 하위 있는 상위 · 꺼진 것 · 없는 것 → false (category) | D4-3, D4-4 |
 
 - 프론트 몫: 포커스, 버튼 비활성, 하위 줄 펼침, 토스트, 월 이동, 저장하고 계속, 예산 선 넘김 표시(budget과 함께)
 - 경계 "category는 expense를 모름"은 기존 `ModularityTest`가 맡는다
@@ -1471,19 +1471,19 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 | # | 결정 | 결론 | 이유 |
 |---|---|---|---|
 | D4-1 | 수정·재분류의 경로 | `PUT .../{id}` 하나. 비용 분류가 바뀌었는지는 서비스가 봄 | 기획서 4.5 "화면에서는 구분하지 않는다". 기능 이름 둘은 이벤트·테스트 이름에 남음 |
-| D4-2 ★ | 수정·재분류의 이벤트 모양 | **kei 결정 필요.** 추천: 저장 한 번 = 이벤트 하나 (비용 분류가 바뀌면 Reclassified, 아니면 Updated). 둘 다 이전·이후의 날짜·금액·비용 분류를 전부 담음 | 요구사항정의서 7.3대로면 비용 분류와 금액을 같이 바꿀 때 budget이 두 이벤트를 맞춰 봐야 함. 전부 담으면 "이전을 빼고 이후를 더함" 하나로 끝 |
+| D4-2 | 수정·재분류의 이벤트 모양 | **확정 (kei, 2026-11-07)** 저장 한 번 = 이벤트 하나 (비용 분류가 바뀌면 Reclassified, 아니면 Updated). 둘 다 이전·이후의 날짜·금액·비용 분류를 전부 담음 | 요구사항정의서 7.3대로면 비용 분류와 금액을 같이 바꿀 때 budget이 두 이벤트를 맞춰 봐야 함. 전부 담으면 "이전을 빼고 이후를 더함" 하나로 끝 |
 | D4-3 | "하위가 있는 상위는 고를 수 없다"를 백엔드 어디서 | **확정 (kei, 2026-11-07)** category에 `isSelectable` 추가 (있음 + 켜짐 + 하위가 있는 상위가 아님) | 지금 `isActive`는 하위가 있는 상위도 true. tree를 아는 건 category. 대안: `isActive` 뜻 바꾸기(이름과 어긋남) · expense가 직접 판단(규칙이 샘) · 화면만 막기(요구사항 "거부"와 어긋남) |
-| D4-4 ★ | 하위가 전부 꺼진 상위 | **kei 결정 필요.** 추천: 계속 고를 수 없음. 화면은 그 상위 버튼을 숨김 → 기획서 4.3에 한 줄 | 기획서 빈칸. 고를 수 있게 하면 하위를 다시 켰을 때 "상위 직접 입력분"이 섞임 (P4-1) |
-| D4-5 ★ | 비용이 있는 "하위 없는 상위"에 하위 추가 | **kei 결정 필요.** 추천: 막지 않음. 기존 비용은 상위에 그대로, 새 비용부터 하위 | 기획서 빈칸. 막으면 상위를 끄고 새로 만들어야 함. 기존 비용 옮기기는 Phase 2 |
+| D4-4 | 하위가 전부 꺼진 상위 | **확정 (kei, 2026-11-07)** 계속 고를 수 없음. 화면은 그 상위 버튼을 숨김 → 기획서 4.3에 한 줄 (반영함) | 기획서 빈칸. 고를 수 있게 하면 하위를 다시 켰을 때 "상위 직접 입력분"이 섞임 (P4-1) |
+| D4-5 | 비용이 있는 "하위 없는 상위"에 하위 추가 | **확정 (kei, 2026-11-07)** 막지 않음. 기존 비용은 상위에 그대로, 새 비용부터 하위 | 기획서 빈칸. 막으면 상위를 끄고 새로 만들어야 함. 기존 비용 옮기기는 Phase 2 |
 | D4-6 | 꺼진 비용 분류의 비용 수정 | 비용 분류가 그대로면 검사하지 않음 | 기획서 4.4 |
 | D4-7 | 분류 주체·승인 칸 | 지금 둔다. Phase 1은 USER · true | 데이터 구조라 지금 넣음 (작업 원칙 10). Phase 2 AI 분류가 씀 |
 | D4-8 | 누적 건수 세는 법 | 비용을 읽어 Java에서 셈 | GROUP BY는 JPQL 필요 → 최소 사용 규칙 밖. 1년 2천 건 안쪽. 4주차 MyBatis 판단 때 다시 |
 | D4-9 | 예산 알림(80%·100%) | expense 응답에 넣지 않음. 5장에서 | 넣으면 expense → budget 의존 → 순환 |
 | D4-10 | 요청·응답의 금액 | 숫자 하나 (`"amount": 35000`) | 프론트가 객체를 풀 필요 없음 |
-| D4-11 ★ | 기간·분류별 비용 합계를 만드는 때 | **kei 결정 필요.** 추천: 4주차 report·budget 설계와 함께 | 모양이 받는 쪽에 달림. 지금 만들면 고칠 가능성이 큼 |
+| D4-11 | 기간·분류별 비용 합계를 만드는 때 | **확정 (kei, 2026-11-07)** 4주차 report·budget 설계와 함께 | 모양이 받는 쪽에 달림. 지금 만들면 고칠 가능성이 큼 |
 | D4-12 | `Money`를 누가 먼저 쓰나 | **확정 (kei, 2026-11-07)** 아래 표의 A | 위치(`moa.shared`)는 0.8에서 정해짐. sales와 expense가 둘 다 11/08 시작 |
 | D4-13 | Flyway 번호 | sales `V4`, expense `V5` | 같은 날 만들어 번호를 미리 나눔. `V5`가 먼저 머지되면 로컬 DB가 `V4`를 거부하므로 sales 쪽이 먼저 |
-| D4-14 ★ | expense PR에서 kei가 할 것 | **kei 결정 필요.** 추천: 조각 없음, 질문 2개만 | 6.1의 조각은 AI가 짜는 1·2·4주차 규칙. 3주차는 sales 전체가 kei 손 |
+| D4-14 | expense PR에서 kei가 할 것 | **확정 (kei, 2026-11-07)** 조각 없음, 질문 2개만 | 6.1의 조각은 AI가 짜는 1·2·4주차 규칙. 3주차는 sales 전체가 kei 손 |
 
 **D4-12 `Money` 순서**
 
@@ -1525,7 +1525,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 | 이벤트 | 내용 | 언제 |
 |---|---|---|
 | `ExpenseRegistered` | `storeId`, `expenseId`, `date`, `amount`, `categoryId` | 등록 커밋 후 |
-| `ExpenseUpdated` · `ExpenseReclassified` | `storeId`, `expenseId`, `before`, `after` (`ExpenseSnapshot(date, amount, categoryId)`) | 수정 커밋 후. 바뀐 것 없으면 발행 안 함 (★ D4-2) |
+| `ExpenseUpdated` · `ExpenseReclassified` | `storeId`, `expenseId`, `before`, `after` (`ExpenseSnapshot(date, amount, categoryId)`) | 수정 커밋 후. 바뀐 것 없으면 발행 안 함 (D4-2) |
 | `ExpenseDeleted` | `storeId`, `expenseId`, `date`, `amount`, `categoryId` | 삭제 커밋 후 |
 
 - 상위 합산은 받는 쪽이 category를 보고 한다. 이벤트에는 비용이 가리키는 비용 분류 ID만
