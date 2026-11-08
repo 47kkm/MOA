@@ -24,6 +24,7 @@ import org.springframework.modulith.test.AssertablePublishedEvents;
 import moa.TestcontainersConfiguration;
 import moa.category.CategoryInfo;
 import moa.category.CategoryService;
+import moa.expense.ExpenseEvents.ExpenseReclassified;
 import moa.expense.ExpenseEvents.ExpenseRegistered;
 import moa.expense.ExpenseEvents.ExpenseSnapshot;
 import moa.expense.ExpenseEvents.ExpenseUpdated;
@@ -120,6 +121,23 @@ class ExpenseServiceTest {
                 .contains(ExpenseUpdated.class)
                 .matching(ExpenseUpdated::before, new ExpenseSnapshot(TODAY, 35000L, beans.id()))
                 .matching(ExpenseUpdated::after, new ExpenseSnapshot(TODAY.minusDays(1), 30000L, beans.id()));
+    }
+
+    // 저장 한 번 = 이벤트 하나. 비용 분류가 바뀌면 Reclassified만 나가고 Updated는 나가지 않는다 (04 설계 D4-2)
+    @Test
+    @DisplayName("비용 재분류 - 비용 분류와 금액을 함께 → ExpenseReclassified 하나")
+    void reclassifyPublishesOne(AssertablePublishedEvents events) {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+
+        ExpenseInfo updated = expenseService.update(STORE_ID, registered.id(), milk.id(), 12000L, TODAY, null);
+
+        assertThat(updated.categoryPath()).isEqualTo("식자재 > 유제품");
+        assertThat(events.ofType(ExpenseUpdated.class)).isEmpty();
+        assertThat(events.ofType(ExpenseReclassified.class)).hasSize(1);
+        assertThat(events)
+                .contains(ExpenseReclassified.class)
+                .matching(ExpenseReclassified::before, new ExpenseSnapshot(TODAY, 35000L, beans.id()))
+                .matching(ExpenseReclassified::after, new ExpenseSnapshot(TODAY, 12000L, milk.id()));
     }
 
     private int count() {
