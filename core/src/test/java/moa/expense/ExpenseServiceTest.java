@@ -248,6 +248,22 @@ class ExpenseServiceTest {
         assertThat(expenseService.list(STORE_ID, october, 999L).items()).isEmpty();
     }
 
+    // 화면이 categoryActive=false를 보고 "(꺼짐)"을 붙인다 (04 설계 4.2)
+    @Test
+    @DisplayName("비용 목록 조회 - 꺼진 비용 분류의 비용도 보임 (categoryActive false)")
+    void listShowsInactiveCategory() {
+        expenseService.register(STORE_ID, milk.id(), 12000L, TODAY, null);
+        categoryService.deactivate(STORE_ID, milk.id());
+
+        ExpenseList list = expenseService.list(STORE_ID, YearMonth.of(2026, 10), null);
+
+        assertThat(list.items()).singleElement()
+                .satisfies(item -> {
+                    assertThat(item.categoryPath()).isEqualTo("식자재 > 유제품");
+                    assertThat(item.categoryActive()).isFalse();
+                });
+    }
+
     private int count() {
         return jdbc.queryForObject("SELECT COUNT(*) FROM expense.expenses", Integer.class);
     }
