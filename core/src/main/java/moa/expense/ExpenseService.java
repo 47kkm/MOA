@@ -54,7 +54,10 @@ public class ExpenseService {
         expense.change(categoryId, amount, date, memo, LocalDate.now(clock));
         ExpenseSnapshot after = expense.snapshot();
         // 비용 분류가 바뀌었는지는 서비스가 본다. 화면은 수정과 재분류를 구분하지 않는다 (04 설계 D4-1)
+        // 바뀌었을 때만 새 비용 분류를 검사한다. 그대로면 꺼져 있어도 금액 · 날짜 · 메모를 고칠 수 있다 (D4-6)
+        // 거부되면 트랜잭션이 되돌아가 change도 저장되지 않는다 (04 설계 4.2)
         if (!before.categoryId().equals(after.categoryId())) {
+            rejectUnselectable(storeId, after.categoryId());
             events.publishEvent(new ExpenseReclassified(storeId, id, before, after));
         } else {
             events.publishEvent(new ExpenseUpdated(storeId, id, before, after));
