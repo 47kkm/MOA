@@ -60,6 +60,18 @@ class ExpenseTest {
         assertThatThrownBy(() -> withMemo("원두\n2kg")).isInstanceOf(IllegalArgumentException.class);
     }
 
+    // 요청 JSON에서 칸이 빠지면 null로 들어온다. 전부 400 VALIDATION (04 설계 4.3)
+    @Test
+    @DisplayName("비용 등록 - 비용 분류 · 금액 · 날짜 없음 → 거부")
+    void rejectsMissingFields() {
+        assertThatThrownBy(() -> Expense.register(STORE_ID, null, 1000L, TODAY, null, TODAY))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Expense.register(STORE_ID, BEANS, null, TODAY, null, TODAY))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> Expense.register(STORE_ID, BEANS, 1000L, null, null, TODAY))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static Expense register(Long amount) {
         return Expense.register(STORE_ID, BEANS, amount, TODAY, null, TODAY);
     }
