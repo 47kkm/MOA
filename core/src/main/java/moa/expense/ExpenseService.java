@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -84,6 +85,12 @@ public class ExpenseService {
     public ExpenseList list(Long storeId, YearMonth yearMonth, Long categoryId) {
         List<Expense> month = expenses.findByStoreIdAndExpenseDateBetweenOrderByExpenseDateDescIdDesc(storeId,
                 yearMonth.atDay(1), yearMonth.atEndOfMonth());
+        // 필터는 그 달 목록에서 Java로 거른다. 한 달 150건 안쪽이라 쿼리를 하나 더 두지 않는다 (기획서 P4-5)
+        // 상위면 자신 + 하위 전부(꺼진 것 포함), 하위면 자신만, 없는 ID면 빈 집합 → 빈 목록 (04 설계 4.2)
+        if (categoryId != null) {
+            Set<Long> ids = categories.idsWithChildren(storeId, categoryId);
+            month = month.stream().filter(e -> ids.contains(e.getCategoryId())).toList();
+        }
         Map<Long, CategoryInfo> infos = categories.infoOf(storeId,
                 month.stream().map(Expense::getCategoryId).distinct().toList());
         List<ExpenseInfo> items = month.stream().map(e -> toInfo(e, infos.get(e.getCategoryId()))).toList();
