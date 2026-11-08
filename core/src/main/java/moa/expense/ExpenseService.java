@@ -2,7 +2,9 @@ package moa.expense;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -19,6 +21,7 @@ import moa.expense.internal.Expense;
 import moa.expense.internal.ExpenseRepository;
 import moa.shared.ErrorCode;
 import moa.shared.MoaException;
+import moa.shared.Money;
 
 @Service
 public class ExpenseService {
@@ -74,6 +77,18 @@ public class ExpenseService {
         expenses.delete(expense);
         events.publishEvent(new ExpenseDeleted(storeId, id, expense.getExpenseDate(), expense.getAmount().getAmount(),
                 expense.getCategoryId()));
+    }
+
+    // 비용 분류 경로 · 꺼짐 여부는 category.infoOf로 한 번에 받는다 (04 설계 4.2)
+    @Transactional(readOnly = true)
+    public ExpenseList list(Long storeId, YearMonth yearMonth, Long categoryId) {
+        List<Expense> month = expenses.findByStoreIdAndExpenseDateBetweenOrderByExpenseDateDescIdDesc(storeId,
+                yearMonth.atDay(1), yearMonth.atEndOfMonth());
+        Map<Long, CategoryInfo> infos = categories.infoOf(storeId,
+                month.stream().map(Expense::getCategoryId).distinct().toList());
+        List<ExpenseInfo> items = month.stream().map(e -> toInfo(e, infos.get(e.getCategoryId()))).toList();
+        Money total = month.stream().map(Expense::getAmount).reduce(Money.create(0), Money::plus);
+        return new ExpenseList(yearMonth, total.getAmount(), items.size(), items);
     }
 
     private Expense find(Long storeId, Long id) {
