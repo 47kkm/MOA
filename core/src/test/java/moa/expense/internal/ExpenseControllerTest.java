@@ -1,11 +1,14 @@
 package moa.expense.internal;
 
 import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,6 +21,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import moa.expense.ExpenseInfo;
+import moa.expense.ExpenseList;
 import moa.expense.ExpenseService;
 
 /**
@@ -57,5 +61,22 @@ class ExpenseControllerTest {
                 .andExpect(jsonPath("$.amount").value(35000))
                 .andExpect(jsonPath("$.date").value("2026-10-28"))
                 .andExpect(jsonPath("$.memo").value("원두 2kg"));
+    }
+
+    // categoryId는 빈 값이면 필터 없음 (04 설계 4.7 "?yearMonth=2026-10&categoryId=")
+    @Test
+    @DisplayName("비용 목록 조회 - 200과 본문 (yearMonth \"2026-10\", 합계 · 건수)")
+    void listReturns200() throws Exception {
+        given(expenseService.list(1L, YearMonth.of(2026, 10), null))
+                .willReturn(new ExpenseList(YearMonth.of(2026, 10), 35000L, 1,
+                        List.of(new ExpenseInfo(7L, 11L, "식자재 > 원두", false, 35000L, DATE, null))));
+
+        mvc.perform(get("/api/stores/1/expenses").param("yearMonth", "2026-10").param("categoryId", ""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.yearMonth").value("2026-10"))
+                .andExpect(jsonPath("$.total").value(35000))
+                .andExpect(jsonPath("$.count").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(7))
+                .andExpect(jsonPath("$.items[0].categoryActive").value(false));
     }
 }
