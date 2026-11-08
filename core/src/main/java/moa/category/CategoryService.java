@@ -158,7 +158,7 @@ public class CategoryService {
     @Transactional(readOnly = true)
     public boolean isSelectable(Long storeId, Long categoryId) {
         return categories.findByIdAndStoreId(categoryId, storeId)
-                .map(c -> c.isActive() && !(c.isTop() && categories.countByStoreIdAndParentId(storeId, c.getId()) > 0))
+                .map(c -> c.isActive() && !hasChildren(c))
                 .orElse(false);
     }
 
@@ -211,6 +211,11 @@ public class CategoryService {
                 && categories.countByStoreIdAndParentIdIsNullAndActiveTrue(storeId) == 1) {
             throw new MoaException(ErrorCode.CATEGORY_LAST_ACTIVE, "at least one active top category is required");
         }
+    }
+
+    // 하위를 가질 수 있는 건 상위뿐이라 하위면 세지 않는다 (2단계). 꺼진 하위도 센다 (04 설계 D4-4)
+    private boolean hasChildren(Category category) {
+        return category.isTop() && categories.countByStoreIdAndParentId(category.getStoreId(), category.getId()) > 0;
     }
 
     private Category find(Long storeId, Long id) {
