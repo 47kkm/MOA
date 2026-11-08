@@ -556,6 +556,18 @@ class CategoryServiceTest {
         assertThat(categoryService.isActive(2L, beans.id())).as("다른 매장").isFalse();
     }
 
+    // expense가 비용 등록·재분류 때 부른다 (04 설계 4.7, D4-3)
+    @Test
+    @DisplayName("분류 선택 가능 확인 - 켜진 하위 · 하위 없는 상위 → true")
+    void isSelectable() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+
+        assertThat(categoryService.isSelectable(STORE_ID, beans.id())).isTrue();
+        assertThat(categoryService.isSelectable(STORE_ID, rent.id())).isTrue();
+    }
+
     // expense(비용 목록의 분류 경로)와 report(분류별 집계 이름)가 쓴다 (04 설계 2.7)
     @Test
     @DisplayName("분류 정보 - 요청한 ID의 경로, 건수는 0, 없는 ID는 빠짐")
