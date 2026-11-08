@@ -24,7 +24,7 @@ class MoneyTest {
     }
 
     @Test
-    @DisplayName("3번 금액 생성 - 0 → 정상 생성")
+    @DisplayName("금액 생성 - 0 → 정상 생성")
     void createsZero() {
         Money money = Money.create(0);
 
