@@ -20,4 +20,8 @@ public final class ExpenseEvents {
     // 비용 분류가 그대로인 수정. 바뀐 것이 없으면 발행하지 않는다 (04 설계 D4-2)
     public record ExpenseUpdated(Long storeId, Long expenseId, ExpenseSnapshot before, ExpenseSnapshot after) {
     }
+
+    // 비용 분류가 바뀐 수정. 금액 · 날짜를 함께 바꿔도 이것 하나만 나간다 (04 설계 D4-2)
+    public record ExpenseReclassified(Long storeId, Long expenseId, ExpenseSnapshot before, ExpenseSnapshot after) {
+    }
 }

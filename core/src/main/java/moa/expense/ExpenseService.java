@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import moa.category.CategoryInfo;
 import moa.category.CategoryService;
+import moa.expense.ExpenseEvents.ExpenseReclassified;
 import moa.expense.ExpenseEvents.ExpenseRegistered;
 import moa.expense.ExpenseEvents.ExpenseSnapshot;
 import moa.expense.ExpenseEvents.ExpenseUpdated;
@@ -51,7 +52,13 @@ public class ExpenseService {
         Expense expense = find(storeId, id);
         ExpenseSnapshot before = expense.snapshot();
         expense.change(categoryId, amount, date, memo, LocalDate.now(clock));
-        events.publishEvent(new ExpenseUpdated(storeId, id, before, expense.snapshot()));
+        ExpenseSnapshot after = expense.snapshot();
+        // 비용 분류가 바뀌었는지는 서비스가 본다. 화면은 수정과 재분류를 구분하지 않는다 (04 설계 D4-1)
+        if (!before.categoryId().equals(after.categoryId())) {
+            events.publishEvent(new ExpenseReclassified(storeId, id, before, after));
+        } else {
+            events.publishEvent(new ExpenseUpdated(storeId, id, before, after));
+        }
         return toInfo(expense, categories.infoOf(storeId, List.of(expense.getCategoryId())).get(expense.getCategoryId()));
     }
 
