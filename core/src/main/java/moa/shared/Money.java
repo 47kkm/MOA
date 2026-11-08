@@ -27,6 +27,7 @@ public class Money {
         return amount;
     }
 
+    @Override
     public boolean equals (Object obj) {
         if (this == obj) return true;
         if (obj == null || getClass() != obj.getClass()) return false;
@@ -34,6 +35,7 @@ public class Money {
         return amount == money.amount;
     }
 
+    @Override
     public int hashCode () {
         return Long.hashCode(amount);
     }
