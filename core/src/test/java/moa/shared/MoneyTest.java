@@ -30,4 +30,12 @@ class MoneyTest {
 
         assertThat(money.getAmount()).isEqualTo(0);
     }
+
+    @Test
+    @DisplayName("금액 합 - 정상 합계")
+    void sumsAmount() {
+        Money money = Money.create(1000);
+
+        assertThat(money.plus(Money.create(2000))).isEqualTo(Money.create(3000));
+    }
 }
