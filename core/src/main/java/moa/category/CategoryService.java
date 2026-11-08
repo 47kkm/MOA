@@ -151,10 +151,13 @@ public class CategoryService {
         return categories.findByIdAndStoreId(categoryId, storeId).map(Category::isActive).orElse(false);
     }
 
-    // expense가 비용 등록·재분류 때 부른다 (04 설계 4.7, D4-3)
+    // expense가 비용 등록·재분류 때 부른다. 하위가 있는 상위는 고를 수 없고 하위 중 하나를 골라야 한다 (04 설계 4.7, D4-3)
+    // 하위는 꺼진 것도 센다. 하위가 전부 꺼진 상위도 고를 수 없다 (04 설계 D4-4)
     @Transactional(readOnly = true)
     public boolean isSelectable(Long storeId, Long categoryId) {
-        return categories.findByIdAndStoreId(categoryId, storeId).map(Category::isActive).orElse(false);
+        return categories.findByIdAndStoreId(categoryId, storeId)
+                .map(c -> c.isActive() && !(c.isTop() && categories.countByStoreIdAndParentId(storeId, c.getId()) > 0))
+                .orElse(false);
     }
 
     // expense(비용 목록의 분류 경로)와 report(분류별 집계 이름)가 쓴다. 건수는 채우지 않는다 (04 설계 2.7)
