@@ -182,6 +182,18 @@ class ExpenseServiceTest {
         assertThat(events.ofType(ExpenseReclassified.class)).isEmpty();
     }
 
+    // 다른 매장의 비용은 없는 것과 같다 (04 설계 4.3)
+    @Test
+    @DisplayName("비용 수정 - 다른 매장의 비용 → NOT_FOUND")
+    void updateOtherStoreNotFound() {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+
+        assertFails(ErrorCode.NOT_FOUND,
+                () -> expenseService.update(2L, registered.id(), beans.id(), 30000L, TODAY, null));
+        assertFails(ErrorCode.NOT_FOUND,
+                () -> expenseService.update(STORE_ID, 999L, beans.id(), 30000L, TODAY, null));
+    }
+
     private int count() {
         return jdbc.queryForObject("SELECT COUNT(*) FROM expense.expenses", Integer.class);
     }
