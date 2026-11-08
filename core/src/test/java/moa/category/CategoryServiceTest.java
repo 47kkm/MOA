@@ -568,6 +568,20 @@ class CategoryServiceTest {
         assertThat(categoryService.isSelectable(STORE_ID, rent.id())).isTrue();
     }
 
+    @Test
+    @DisplayName("분류 선택 가능 확인 - 하위 있는 상위 · 꺼진 것 · 없는 것 → false")
+    void notSelectable() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo milk = categoryService.add(STORE_ID, food.id(), "유제품");
+        categoryService.deactivate(STORE_ID, milk.id());
+
+        assertThat(categoryService.isSelectable(STORE_ID, food.id())).as("하위 있는 상위").isFalse();
+        assertThat(categoryService.isSelectable(STORE_ID, milk.id())).as("꺼진 하위").isFalse();
+        assertThat(categoryService.isSelectable(STORE_ID, 999L)).as("없는 분류").isFalse();
+        assertThat(categoryService.isSelectable(2L, beans.id())).as("다른 매장").isFalse();
+    }
+
     // expense(비용 목록의 분류 경로)와 report(분류별 집계 이름)가 쓴다 (04 설계 2.7)
     @Test
     @DisplayName("분류 정보 - 요청한 ID의 경로, 건수는 0, 없는 ID는 빠짐")
