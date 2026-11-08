@@ -19,7 +19,7 @@ class MoneyTest {
     @Test
     @DisplayName("금액 생성 - 음수 금액 → 거부")
     void rejectsNegative() {
-        assertThatThrownBy(() -> Money.create(-1000))
+        assertThatThrownBy(() -> Money.create(-1))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
