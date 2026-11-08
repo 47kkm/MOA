@@ -640,7 +640,7 @@ class CategoryServiceTest {
                 .isInstanceOfSatisfying(MoaException.class, e -> assertThat(e.getCode()).isEqualTo(code));
     }
 
-    // 비용 건수는 가짜가 대신 답한다. main의 NoExpenseYet보다 먼저 쓰이게 @Primary
+    // 비용 건수는 가짜가 대신 답한다. category만 띄워 expense의 구현은 없지만, 함께 뜨더라도 가짜가 쓰이게 @Primary
     @TestConfiguration(proxyBeanMethods = false)
     static class Fakes {
 

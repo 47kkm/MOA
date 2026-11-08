@@ -11,7 +11,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
@@ -22,15 +24,17 @@ import moa.TestcontainersConfiguration;
 import moa.category.CategoryEvents.DefaultCategoriesCreated;
 import moa.category.CategoryInfo;
 import moa.category.CategoryService;
+import moa.category.FakeCategoryUsage;
 import moa.store.StoreEvents.StoreRegistered;
 import moa.store.StoreType;
 
 /**
  * 매장 등록 이벤트를 받아 기본 비용 분류를 만드는 리스너 (04 설계 2.2 "기본 분류 생성").
  * store 모듈은 띄우지 않고, store가 발행했을 이벤트를 테스트가 직접 발행한다.
+ * expense도 띄우지 않으므로 CategoryUsage는 가짜를 넣는다 (04 설계 4.8). 건수를 정하지 않아 늘 0건
  */
 @ApplicationModuleTest
-@Import(TestcontainersConfiguration.class)
+@Import({ TestcontainersConfiguration.class, StoreRegisteredListenerTest.Fakes.class })
 class StoreRegisteredListenerTest {
 
     static final Long STORE_ID = 1L;
@@ -184,5 +188,14 @@ class StoreRegisteredListenerTest {
         return categoryService.tree(STORE_ID, true).stream()
                 .filter(info -> info.path().equals(path))
                 .findFirst().orElseThrow().id();
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class Fakes {
+
+        @Bean
+        FakeCategoryUsage fakeCategoryUsage() {
+            return new FakeCategoryUsage();
+        }
     }
 }

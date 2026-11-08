@@ -1,6 +1,7 @@
 package moa.expense.internal;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -19,4 +20,7 @@ public interface ExpenseRepository extends Repository<Expense, Long> {
     // 한 달 목록. 날짜 역순, 같은 날은 나중 입력(id 큰 것)이 위 (04 설계 4.2)
     List<Expense> findByStoreIdAndExpenseDateBetweenOrderByExpenseDateDescIdDesc(Long storeId, LocalDate from,
             LocalDate to);
+
+    // 비용 분류별 누적 건수용. 세는 것은 CategoryUsageImpl이 Java로 (04 설계 D4-8)
+    List<Expense> findByStoreIdAndCategoryIdIn(Long storeId, Collection<Long> categoryIds);
 }

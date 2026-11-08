@@ -8,9 +8,9 @@ import java.util.stream.Collectors;
 
 /**
  * 테스트용 CategoryUsage. 분류 ID별 누적 비용 건수를 테스트가 정한다 (04 설계 0.3, D2-9).
- * expense 모듈이 아직 없어도 "사용된 분류는 삭제 거부"를 확인할 수 있다.
+ * category만 띄우는 테스트에는 expense의 구현이 없으므로 이것을 넣는다. internal 쪽 테스트도 쓰도록 public
  */
-class FakeCategoryUsage implements CategoryUsage {
+public class FakeCategoryUsage implements CategoryUsage {
 
     private final Map<Long, Long> counts = new ConcurrentHashMap<>();
 

@@ -32,7 +32,7 @@ public class CategoryService {
     private final CategoryUsage usage;
     private final ApplicationEventPublisher events;
 
-    // usage는 인터페이스만 안다. 실제로 무엇이 들어오는지(지금은 NoExpenseYet, 3주차부터 expense의 구현)는 Spring이 정한다
+    // usage는 인터페이스만 안다. 실제로 무엇이 들어오는지(expense의 CategoryUsageImpl, 테스트에서는 가짜)는 Spring이 정한다
     public CategoryService(CategoryRepository categories, CategoryUsage usage, ApplicationEventPublisher events) {
         this.categories = categories;
         this.usage = usage;
