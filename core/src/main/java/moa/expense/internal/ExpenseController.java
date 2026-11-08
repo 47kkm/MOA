@@ -4,6 +4,7 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -49,6 +50,12 @@ class ExpenseController {
     ExpenseInfo update(@PathVariable Long storeId, @PathVariable Long id, @RequestBody ExpenseRequest request) {
         return expenseService.update(storeId, id, request.categoryId(), request.amount(), request.date(),
                 request.memo());
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void delete(@PathVariable Long storeId, @PathVariable Long id) {
+        expenseService.delete(storeId, id);
     }
 
     // 금액은 숫자 하나 (04 설계 D4-10). 빠진 칸은 null로 들어와 Expense가 400으로 거부한다
