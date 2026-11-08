@@ -2,6 +2,7 @@ package moa.expense;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import java.time.Clock;
 import java.time.LocalDate;
@@ -272,6 +273,22 @@ class ExpenseServiceTest {
 
         assertFails(ErrorCode.CATEGORY_IN_USE, () -> categoryService.delete(STORE_ID, beans.id()));
         assertFails(ErrorCode.CATEGORY_IN_USE, () -> categoryService.delete(STORE_ID, food.id()));
+    }
+
+    // 비용 분류 화면의 "누적 비용 N건"도 같은 구현으로 센다. 다른 매장의 비용은 세지 않는다 (04 설계 2.2 tree)
+    @Test
+    @DisplayName("분류 tree 조회 - 누적 비용 건수 (실제 비용으로)")
+    void treeCountsRealExpenses() {
+        expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+        expenseService.register(STORE_ID, beans.id(), 30000L, TODAY, null);
+        expenseService.register(STORE_ID, milk.id(), 12000L, TODAY, null);
+        jdbc.update("""
+                INSERT INTO expense.expenses (store_id, category_id, amount, expense_date, classified_by, approved)
+                VALUES (2, ?, 5000, '2026-10-28', 'USER', 1)""", beans.id());
+
+        assertThat(categoryService.tree(STORE_ID, true))
+                .extracting(CategoryInfo::path, CategoryInfo::expenseCount)
+                .contains(tuple("식자재 > 원두", 2L), tuple("식자재 > 유제품", 1L), tuple("임대료", 0L));
     }
 
     private int count() {
