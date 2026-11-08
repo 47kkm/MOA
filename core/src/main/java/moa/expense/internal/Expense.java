@@ -1,6 +1,7 @@
 package moa.expense.internal;
 
 import java.time.LocalDate;
+import java.util.Objects;
 
 import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
@@ -63,12 +64,21 @@ public class Expense {
                 validMemo(memo));
     }
 
-    // 수정·재분류를 한 번에 (04 설계 4.4, D4-1). 등록과 같은 입력 규칙
+    // 수정·재분류를 한 번에 (04 설계 4.4, D4-1). 등록과 같은 입력 규칙.
+    // 바뀌었으면 true. 규칙대로 다듬고 보니 지금 값과 같으면 아무 일 없이 false (04 설계 4.3)
     public boolean change(Long categoryId, Long amount, LocalDate date, String memo, LocalDate today) {
-        this.categoryId = validCategoryId(categoryId);
-        this.amount = validAmount(amount);
-        this.expenseDate = validDate(date, today);
-        this.memo = validMemo(memo);
+        Long newCategoryId = validCategoryId(categoryId);
+        Money newAmount = validAmount(amount);
+        LocalDate newDate = validDate(date, today);
+        String newMemo = validMemo(memo);
+        if (newCategoryId.equals(this.categoryId) && newAmount.equals(this.amount)
+                && newDate.equals(this.expenseDate) && Objects.equals(newMemo, this.memo)) {
+            return false;
+        }
+        this.categoryId = newCategoryId;
+        this.amount = newAmount;
+        this.expenseDate = newDate;
+        this.memo = newMemo;
         return true;
     }
 
