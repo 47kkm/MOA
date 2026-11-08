@@ -1,7 +1,15 @@
 package moa.shared;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Embeddable;
+
+@Embeddable
 public class Money {
+    @Column(columnDefinition = "DECIMAL(15, 0)")
     private long amount;
+
+    protected Money() {
+    }
 
     private Money(long amount) {
         this.amount = amount;
