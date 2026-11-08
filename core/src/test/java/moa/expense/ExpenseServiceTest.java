@@ -1,11 +1,13 @@
 package moa.expense;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,6 +25,8 @@ import moa.TestcontainersConfiguration;
 import moa.category.CategoryInfo;
 import moa.category.CategoryService;
 import moa.expense.ExpenseEvents.ExpenseRegistered;
+import moa.shared.ErrorCode;
+import moa.shared.MoaException;
 
 /**
  * expense 모듈과 그 의존(category)까지 띄우고 진짜 MySQL(Testcontainers)에 저장해 보는 통합 테스트 (04 설계 0.7, 4.7).
@@ -70,6 +74,30 @@ class ExpenseServiceTest {
         assertThat(events)
                 .contains(ExpenseRegistered.class)
                 .matching(ExpenseRegistered::expenseId, info.id());
+    }
+
+    // 고를 수 있는 비용 분류 = 있음 + 켜짐 + 하위가 있는 상위가 아님 (04 설계 4.3, D4-3)
+    @Test
+    @DisplayName("비용 등록 - 하위 있는 상위 · 꺼진 것 · 없는 것 → EXPENSE_CATEGORY_UNAVAILABLE")
+    void registerRejectsUnselectable() {
+        categoryService.deactivate(STORE_ID, milk.id());
+
+        assertFails(ErrorCode.EXPENSE_CATEGORY_UNAVAILABLE,
+                () -> expenseService.register(STORE_ID, food.id(), 1000L, TODAY, null));
+        assertFails(ErrorCode.EXPENSE_CATEGORY_UNAVAILABLE,
+                () -> expenseService.register(STORE_ID, milk.id(), 1000L, TODAY, null));
+        assertFails(ErrorCode.EXPENSE_CATEGORY_UNAVAILABLE,
+                () -> expenseService.register(STORE_ID, 999L, 1000L, TODAY, null));
+        assertThat(count()).isZero();
+    }
+
+    private int count() {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM expense.expenses", Integer.class);
+    }
+
+    private static void assertFails(ErrorCode code, ThrowingCallable call) {
+        assertThatThrownBy(call)
+                .isInstanceOfSatisfying(MoaException.class, e -> assertThat(e.getCode()).isEqualTo(code));
     }
 
     // "오늘"을 2026-10-28로 고정한다 (04 설계 D0-6)
