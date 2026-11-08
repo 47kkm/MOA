@@ -54,4 +54,21 @@ class MoneyTest {
 
         assertThat(money.isZero()).isFalse();
     }
+
+    @Test
+    @DisplayName("금액 비교 - 같은 숫자의 금액 → 같음")
+    void isSameAmount() {
+        Money money = Money.create(1000);
+
+        assertThat(money.equals(Money.create(1000))).isTrue();
+        assertThat(money.hashCode()).isEqualTo(Money.create(1000).hashCode());
+    }
+
+    @Test
+    @DisplayName("금액 비교 - 다른 숫자의 금액 → 다름")
+    void isDiffAmount() {
+        Money money = Money.create(1000);
+
+        assertThat(money.equals(Money.create(2000))).isFalse();
+    }
 }
