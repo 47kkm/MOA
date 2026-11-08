@@ -63,6 +63,15 @@ public class Expense {
                 validMemo(memo));
     }
 
+    // 수정·재분류를 한 번에 (04 설계 4.4, D4-1). 등록과 같은 입력 규칙
+    public boolean change(Long categoryId, Long amount, LocalDate date, String memo, LocalDate today) {
+        this.categoryId = validCategoryId(categoryId);
+        this.amount = validAmount(amount);
+        this.expenseDate = validDate(date, today);
+        this.memo = validMemo(memo);
+        return true;
+    }
+
     // 비용 분류 필수 (04 설계 4.3). 고를 수 있는 비용 분류인가는 category를 봐야 해서 밖 규칙 (응용 서비스)
     private static Long validCategoryId(Long categoryId) {
         if (categoryId == null) {
