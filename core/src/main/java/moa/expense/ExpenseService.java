@@ -48,7 +48,7 @@ public class ExpenseService {
         expenses.save(expense);
         events.publishEvent(new ExpenseRegistered(storeId, expense.getId(), expense.getExpenseDate(),
                 expense.getAmount().getAmount(), expense.getCategoryId()));
-        return toInfo(expense, categories.infoOf(storeId, List.of(expense.getCategoryId())).get(expense.getCategoryId()));
+        return toInfo(storeId, expense);
     }
 
     // save를 부르지 않는다. 읽어 온 expense를 고치면 커밋 때 변경 감지가 UPDATE를 보낸다
@@ -69,7 +69,7 @@ public class ExpenseService {
                 events.publishEvent(new ExpenseUpdated(storeId, id, before, after));
             }
         }
-        return toInfo(expense, categories.infoOf(storeId, List.of(expense.getCategoryId())).get(expense.getCategoryId()));
+        return toInfo(storeId, expense);
     }
 
     @Transactional
@@ -108,6 +108,12 @@ public class ExpenseService {
         if (!categories.isSelectable(storeId, categoryId)) {
             throw new MoaException(ErrorCode.EXPENSE_CATEGORY_UNAVAILABLE, "category is not selectable: " + categoryId);
         }
+    }
+
+    // 비용 하나의 응답. 비용 분류 경로 · 꺼짐 여부는 category.infoOf로
+    private ExpenseInfo toInfo(Long storeId, Expense expense) {
+        Long categoryId = expense.getCategoryId();
+        return toInfo(expense, categories.infoOf(storeId, List.of(categoryId)).get(categoryId));
     }
 
     private static ExpenseInfo toInfo(Expense expense, CategoryInfo category) {
