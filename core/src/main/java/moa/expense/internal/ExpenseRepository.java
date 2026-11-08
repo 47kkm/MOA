@@ -9,6 +9,8 @@ public interface ExpenseRepository extends Repository<Expense, Long> {
 
     Expense save(Expense expense);
 
+    void delete(Expense expense);
+
     // 다른 매장의 비용은 없는 것과 같다
     Optional<Expense> findByIdAndStoreId(Long id, Long storeId);
 }

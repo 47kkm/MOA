@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import moa.category.CategoryInfo;
 import moa.category.CategoryService;
+import moa.expense.ExpenseEvents.ExpenseDeleted;
 import moa.expense.ExpenseEvents.ExpenseReclassified;
 import moa.expense.ExpenseEvents.ExpenseRegistered;
 import moa.expense.ExpenseEvents.ExpenseSnapshot;
@@ -65,6 +66,14 @@ public class ExpenseService {
             }
         }
         return toInfo(expense, categories.infoOf(storeId, List.of(expense.getCategoryId())).get(expense.getCategoryId()));
+    }
+
+    @Transactional
+    public void delete(Long storeId, Long id) {
+        Expense expense = find(storeId, id);
+        expenses.delete(expense);
+        events.publishEvent(new ExpenseDeleted(storeId, id, expense.getExpenseDate(), expense.getAmount().getAmount(),
+                expense.getCategoryId()));
     }
 
     private Expense find(Long storeId, Long id) {
