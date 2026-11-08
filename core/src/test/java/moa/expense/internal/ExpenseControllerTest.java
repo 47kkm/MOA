@@ -3,6 +3,7 @@ package moa.expense.internal;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -90,6 +91,23 @@ class ExpenseControllerTest {
         mvc.perform(get("/api/stores/1/expenses").param("yearMonth", "2026-13"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION"));
+    }
+
+    // 수정과 재분류는 같은 경로 (04 설계 D4-1)
+    @Test
+    @DisplayName("비용 수정 - 200과 본문")
+    void updateReturns200() throws Exception {
+        given(expenseService.update(1L, 7L, 12L, 12000L, DATE, null))
+                .willReturn(new ExpenseInfo(7L, 12L, "식자재 > 유제품", true, 12000L, DATE, null));
+
+        mvc.perform(put("/api/stores/1/expenses/7")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"categoryId": 12, "amount": 12000, "date": "2026-10-28"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categoryPath").value("식자재 > 유제품"))
+                .andExpect(jsonPath("$.amount").value(12000));
     }
 
     @Test
