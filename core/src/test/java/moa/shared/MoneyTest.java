@@ -38,4 +38,12 @@ class MoneyTest {
 
         assertThat(money.plus(Money.create(2000))).isEqualTo(Money.create(3000));
     }
+
+    @Test
+    @DisplayName("금액 0 체크 - 0원 → true")
+    void isZeroWhenZero() {
+        Money money = Money.create(0);
+
+        assertThat(money.isZero()).isTrue();
+    }
 }
