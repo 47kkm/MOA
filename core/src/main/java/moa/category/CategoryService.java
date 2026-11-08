@@ -4,8 +4,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -158,6 +160,20 @@ public class CategoryService {
         return categories.findByIdAndStoreId(categoryId, storeId)
                 .map(c -> c.isActive() && !(c.isTop() && categories.countByStoreIdAndParentId(storeId, c.getId()) > 0))
                 .orElse(false);
+    }
+
+    // expense가 비용 목록의 비용 분류 필터에 쓴다. 꺼진 것도 넣는다 (04 설계 4.2 "비용 목록 조회", 4.7)
+    // tree를 쓰지 않는 이유: tree는 누적 건수를 세느라 매장의 비용 전부를 다시 읽는다
+    @Transactional(readOnly = true)
+    public Set<Long> idsWithChildren(Long storeId, Long categoryId) {
+        Set<Long> ids = new HashSet<>();
+        categories.findByIdAndStoreId(categoryId, storeId).ifPresent(category -> {
+            ids.add(category.getId());
+            if (category.isTop()) {
+                categories.findByStoreIdAndParentId(storeId, category.getId()).forEach(child -> ids.add(child.getId()));
+            }
+        });
+        return ids;
     }
 
     // expense(비용 목록의 분류 경로)와 report(분류별 집계 이름)가 쓴다. 건수는 채우지 않는다 (04 설계 2.7)
