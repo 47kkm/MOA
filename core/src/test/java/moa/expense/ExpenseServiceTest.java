@@ -156,6 +156,20 @@ class ExpenseServiceTest {
         assertThat(events.ofType(ExpenseReclassified.class)).isEmpty();
     }
 
+    // 비용 분류가 그대로면 고를 수 있는지 검사하지 않는다 (04 설계 D4-6)
+    @Test
+    @DisplayName("비용 수정 - 꺼진 비용 분류 그대로 금액만 → 저장")
+    void updateKeepsInactiveCategory() {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+        categoryService.deactivate(STORE_ID, beans.id());
+
+        ExpenseInfo updated = expenseService.update(STORE_ID, registered.id(), beans.id(), 30000L, TODAY, null);
+
+        assertThat(updated.amount()).isEqualTo(30000L);
+        assertThat(updated.categoryActive()).isFalse();
+        assertThat(jdbc.queryForObject("SELECT amount FROM expense.expenses", Long.class)).isEqualTo(30000L);
+    }
+
     private int count() {
         return jdbc.queryForObject("SELECT COUNT(*) FROM expense.expenses", Integer.class);
     }
