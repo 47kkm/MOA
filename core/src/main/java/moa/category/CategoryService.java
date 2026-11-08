@@ -151,6 +151,12 @@ public class CategoryService {
         return categories.findByIdAndStoreId(categoryId, storeId).map(Category::isActive).orElse(false);
     }
 
+    // expense가 비용 등록·재분류 때 부른다 (04 설계 4.7, D4-3)
+    @Transactional(readOnly = true)
+    public boolean isSelectable(Long storeId, Long categoryId) {
+        return categories.findByIdAndStoreId(categoryId, storeId).map(Category::isActive).orElse(false);
+    }
+
     // expense(비용 목록의 분류 경로)와 report(분류별 집계 이름)가 쓴다. 건수는 채우지 않는다 (04 설계 2.7)
     @Transactional(readOnly = true)
     public Map<Long, CategoryInfo> infoOf(Long storeId, Collection<Long> categoryIds) {
