@@ -19,6 +19,7 @@ import moa.shared.Money;
 public class Expense {
 
     static final long MAX_AMOUNT = 999_999_999L;
+    static final int MAX_MEMO = 200;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -58,7 +59,7 @@ public class Expense {
     // Phase 1은 사장님이 직접 고르므로 USER · 승인됨 (04 설계 D4-7)
     public static Expense register(Long storeId, Long categoryId, Long amount, LocalDate date, String memo,
             LocalDate today) {
-        return new Expense(storeId, categoryId, validAmount(amount), validDate(date, today), memo);
+        return new Expense(storeId, categoryId, validAmount(amount), validDate(date, today), validMemo(memo));
     }
 
     // 금액 규칙: 1 이상 999,999,999 이하 (04 설계 4.3). 상한은 입력 규칙이라 Money가 아닌 여기서 본다 → 합계는 9자리를 넘을 수 있다 (0.8)
@@ -75,6 +76,21 @@ public class Expense {
             throw new IllegalArgumentException("date must not be in the future");
         }
         return date;
+    }
+
+    // 메모 규칙: 앞뒤 공백을 자른 뒤 0~200자, 공백뿐이면 없음(null), 줄바꿈 불가 (04 설계 4.3)
+    private static String validMemo(String memo) {
+        String stripped = memo == null ? "" : memo.strip();
+        if (stripped.isEmpty()) {
+            return null;
+        }
+        if (stripped.length() > MAX_MEMO) {
+            throw new IllegalArgumentException("memo must be at most " + MAX_MEMO + " characters");
+        }
+        if (stripped.contains("\n") || stripped.contains("\r")) {
+            throw new IllegalArgumentException("memo must be a single line");
+        }
+        return stripped;
     }
 
     public Long getId() {
