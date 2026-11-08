@@ -1,6 +1,8 @@
 package moa.expense.internal;
 
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -24,6 +26,8 @@ import org.springframework.test.web.servlet.MockMvc;
 import moa.expense.ExpenseInfo;
 import moa.expense.ExpenseList;
 import moa.expense.ExpenseService;
+import moa.shared.ErrorCode;
+import moa.shared.MoaException;
 
 /**
  * 컨트롤러만 띄우는 HTTP 테스트 (04 설계 0.7). 서비스는 가짜(Mock)라 규칙은 여기서 검사하지 않고,
@@ -108,6 +112,30 @@ class ExpenseControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.categoryPath").value("식자재 > 유제품"))
                 .andExpect(jsonPath("$.amount").value(12000));
+    }
+
+    @Test
+    @DisplayName("비용 재분류 - 고를 수 없는 비용 분류 → 409 EXPENSE_CATEGORY_UNAVAILABLE")
+    void reclassifyUnavailable() throws Exception {
+        given(expenseService.update(1L, 7L, 10L, 12000L, DATE, null))
+                .willThrow(new MoaException(ErrorCode.EXPENSE_CATEGORY_UNAVAILABLE, "category is not selectable: 10"));
+
+        mvc.perform(put("/api/stores/1/expenses/7")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"categoryId": 10, "amount": 12000, "date": "2026-10-28"}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("EXPENSE_CATEGORY_UNAVAILABLE"));
+    }
+
+    @Test
+    @DisplayName("비용 삭제 - 204")
+    void deleteReturns204() throws Exception {
+        mvc.perform(delete("/api/stores/1/expenses/7"))
+                .andExpect(status().isNoContent());
+
+        then(expenseService).should().delete(1L, 7L);
     }
 
     @Test
