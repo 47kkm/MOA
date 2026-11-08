@@ -24,6 +24,7 @@ import org.springframework.modulith.test.AssertablePublishedEvents;
 import moa.TestcontainersConfiguration;
 import moa.category.CategoryInfo;
 import moa.category.CategoryService;
+import moa.expense.ExpenseEvents.ExpenseDeleted;
 import moa.expense.ExpenseEvents.ExpenseReclassified;
 import moa.expense.ExpenseEvents.ExpenseRegistered;
 import moa.expense.ExpenseEvents.ExpenseSnapshot;
@@ -192,6 +193,21 @@ class ExpenseServiceTest {
                 () -> expenseService.update(2L, registered.id(), beans.id(), 30000L, TODAY, null));
         assertFails(ErrorCode.NOT_FOUND,
                 () -> expenseService.update(STORE_ID, 999L, beans.id(), 30000L, TODAY, null));
+    }
+
+    @Test
+    @DisplayName("비용 삭제 - 지워지고 ExpenseDeleted 발행 (다른 매장의 비용 → NOT_FOUND)")
+    void deleteRemovesAndPublishes(AssertablePublishedEvents events) {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+
+        assertFails(ErrorCode.NOT_FOUND, () -> expenseService.delete(2L, registered.id()));
+        expenseService.delete(STORE_ID, registered.id());
+
+        assertThat(count()).isZero();
+        assertThat(events)
+                .contains(ExpenseDeleted.class)
+                .matching(e -> e.expenseId().equals(registered.id()) && e.amount() == 35000L
+                        && e.categoryId().equals(beans.id()) && e.date().equals(TODAY));
     }
 
     private int count() {
