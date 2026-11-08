@@ -22,4 +22,12 @@ class MoneyTest {
         assertThatThrownBy(() -> Money.create(-1000))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    @DisplayName("3번 금액 생성 - 0 → 정상 생성")
+    void createsZero() {
+        Money money = Money.create(0);
+
+        assertThat(money.getAmount()).isEqualTo(0);
+    }
 }
