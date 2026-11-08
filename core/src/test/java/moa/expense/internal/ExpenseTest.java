@@ -15,6 +15,7 @@ class ExpenseTest {
     static final LocalDate TODAY = LocalDate.of(2026, 10, 28);
     static final Long STORE_ID = 1L;
     static final Long BEANS = 11L;
+    static final Long MILK = 12L;
 
     @Test
     @DisplayName("비용 등록 - 정상 등록 (분류 주체 USER, 승인 true)")
@@ -70,6 +71,21 @@ class ExpenseTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> Expense.register(STORE_ID, BEANS, 1000L, null, null, TODAY))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // 수정과 재분류는 한 메서드. 비용 분류가 바뀌었는지는 응용 서비스가 본다 (04 설계 4.4, D4-1)
+    @Test
+    @DisplayName("비용 수정 - 비용 분류 · 금액 · 날짜 · 메모 변경 → 바뀜")
+    void changes() {
+        Expense expense = Expense.register(STORE_ID, BEANS, 35000L, TODAY, "원두 2kg", TODAY);
+
+        boolean changed = expense.change(MILK, 12000L, TODAY.minusDays(3), "우유 6팩", TODAY);
+
+        assertThat(changed).isTrue();
+        assertThat(expense.getCategoryId()).isEqualTo(MILK);
+        assertThat(expense.getAmount()).isEqualTo(Money.create(12000));
+        assertThat(expense.getExpenseDate()).isEqualTo(TODAY.minusDays(3));
+        assertThat(expense.getMemo()).isEqualTo("우유 6팩");
     }
 
     private static Expense register(Long amount) {
