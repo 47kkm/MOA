@@ -19,7 +19,22 @@ public class Money {
         return amount;
     }
 
+    public Money plus(Money money) {
+        return create(this.amount + money.getAmount());
+    }
+
     public long getAmount() {
         return amount;
+    }
+
+    public boolean equals (Object obj) {
+        if (this == obj) return true;
+        if (obj == null || getClass() != obj.getClass()) return false;
+        Money money = (Money) obj;
+        return amount == money.amount;
+    }
+
+    public int hashCode () {
+        return Long.hashCode(amount);
     }
 }
