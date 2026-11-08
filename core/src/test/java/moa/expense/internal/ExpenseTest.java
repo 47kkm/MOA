@@ -88,6 +88,31 @@ class ExpenseTest {
         assertThat(expense.getMemo()).isEqualTo("우유 6팩");
     }
 
+    // 비용 분류 이름 변경(2.3)과 같은 모양. 바뀐 것이 없으면 응용 서비스가 이벤트를 내지 않는다 (04 설계 4.3, D4-2)
+    // 메모는 규칙대로 자른 뒤 비교한다: "  원두 2kg " → "원두 2kg", 공백뿐 → 없음
+    @Test
+    @DisplayName("비용 수정 - 바뀐 것 없음 → 변경 없음")
+    void noChange() {
+        Expense expense = Expense.register(STORE_ID, BEANS, 35000L, TODAY, "원두 2kg", TODAY);
+        Expense noMemo = Expense.register(STORE_ID, BEANS, 35000L, TODAY, null, TODAY);
+
+        assertThat(expense.change(BEANS, 35000L, TODAY, "  원두 2kg ", TODAY)).isFalse();
+        assertThat(noMemo.change(BEANS, 35000L, TODAY, "   ", TODAY)).isFalse();
+    }
+
+    @Test
+    @DisplayName("비용 수정 - 등록과 같은 입력 규칙 → 거부")
+    void changeRules() {
+        Expense expense = Expense.register(STORE_ID, BEANS, 35000L, TODAY, null, TODAY);
+
+        assertThatThrownBy(() -> expense.change(BEANS, 0L, TODAY, null, TODAY))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> expense.change(BEANS, 35000L, TODAY.plusDays(1), null, TODAY))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> expense.change(null, 35000L, TODAY, null, TODAY))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static Expense register(Long amount) {
         return Expense.register(STORE_ID, BEANS, amount, TODAY, null, TODAY);
     }
