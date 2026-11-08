@@ -582,6 +582,19 @@ class CategoryServiceTest {
         assertThat(categoryService.isSelectable(2L, beans.id())).as("다른 매장").isFalse();
     }
 
+    // 꺼진 하위도 하위다. 고를 수 있게 하면 하위를 다시 켰을 때 상위 직접 입력분이 섞인다 (04 설계 D4-4)
+    @Test
+    @DisplayName("분류 선택 가능 확인 - 하위가 전부 꺼진 상위 → false")
+    void topWithAllChildrenOffNotSelectable() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo milk = categoryService.add(STORE_ID, food.id(), "유제품");
+        categoryService.deactivate(STORE_ID, beans.id());
+        categoryService.deactivate(STORE_ID, milk.id());
+
+        assertThat(categoryService.isSelectable(STORE_ID, food.id())).isFalse();
+    }
+
     // expense(비용 목록의 분류 경로)와 report(분류별 집계 이름)가 쓴다 (04 설계 2.7)
     @Test
     @DisplayName("분류 정보 - 요청한 ID의 경로, 건수는 0, 없는 ID는 빠짐")
