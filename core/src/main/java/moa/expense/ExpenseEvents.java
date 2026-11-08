@@ -12,4 +12,12 @@ public final class ExpenseEvents {
 
     public record ExpenseRegistered(Long storeId, Long expenseId, LocalDate date, long amount, Long categoryId) {
     }
+
+    // 수정 이벤트의 이전 · 이후 값 (04 설계 D4-2)
+    public record ExpenseSnapshot(LocalDate date, long amount, Long categoryId) {
+    }
+
+    // 비용 분류가 그대로인 수정. 바뀐 것이 없으면 발행하지 않는다 (04 설계 D4-2)
+    public record ExpenseUpdated(Long storeId, Long expenseId, ExpenseSnapshot before, ExpenseSnapshot after) {
+    }
 }

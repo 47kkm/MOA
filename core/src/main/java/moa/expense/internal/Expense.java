@@ -12,6 +12,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import moa.expense.ExpenseEvents.ExpenseSnapshot;
 import moa.shared.Money;
 
 // 애그리거트는 비용 한 건 (04 설계 4.4). 비용 분류는 categoryId로만 가리킨다
@@ -80,6 +81,11 @@ public class Expense {
         this.expenseDate = newDate;
         this.memo = newMemo;
         return true;
+    }
+
+    // 지금의 날짜 · 금액 · 비용 분류. 수정 이벤트의 이전 · 이후 값이 된다 (04 설계 4.4, D4-2)
+    public ExpenseSnapshot snapshot() {
+        return new ExpenseSnapshot(expenseDate, amount.getAmount(), categoryId);
     }
 
     // 비용 분류 필수 (04 설계 4.3). 고를 수 있는 비용 분류인가는 category를 봐야 해서 밖 규칙 (응용 서비스)
