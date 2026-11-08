@@ -25,6 +25,8 @@ import moa.TestcontainersConfiguration;
 import moa.category.CategoryInfo;
 import moa.category.CategoryService;
 import moa.expense.ExpenseEvents.ExpenseRegistered;
+import moa.expense.ExpenseEvents.ExpenseSnapshot;
+import moa.expense.ExpenseEvents.ExpenseUpdated;
 import moa.shared.ErrorCode;
 import moa.shared.MoaException;
 
@@ -100,6 +102,24 @@ class ExpenseServiceTest {
 
         assertThat(second.id()).isNotEqualTo(first.id());
         assertThat(count()).isEqualTo(2);
+    }
+
+    // 이벤트에는 이전 · 이후의 날짜 · 금액 · 비용 분류를 전부 담는다. budget이 "이전을 빼고 이후를 더함" 하나로 끝낸다 (04 설계 D4-2)
+    @Test
+    @DisplayName("비용 수정 - 금액 · 날짜 · 메모 변경 → 저장, ExpenseUpdated에 이전 · 이후 값")
+    void updateSavesAndPublishes(AssertablePublishedEvents events) {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, "원두 2kg");
+
+        ExpenseInfo updated = expenseService.update(STORE_ID, registered.id(), beans.id(), 30000L, TODAY.minusDays(1),
+                "원두 2kg 할인");
+
+        assertThat(updated).isEqualTo(new ExpenseInfo(registered.id(), beans.id(), "식자재 > 원두", true, 30000L,
+                TODAY.minusDays(1), "원두 2kg 할인"));
+        assertThat(jdbc.queryForObject("SELECT amount FROM expense.expenses", Long.class)).isEqualTo(30000L);
+        assertThat(events)
+                .contains(ExpenseUpdated.class)
+                .matching(ExpenseUpdated::before, new ExpenseSnapshot(TODAY, 35000L, beans.id()))
+                .matching(ExpenseUpdated::after, new ExpenseSnapshot(TODAY.minusDays(1), 30000L, beans.id()));
     }
 
     private int count() {
