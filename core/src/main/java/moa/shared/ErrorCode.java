@@ -17,7 +17,9 @@ public enum ErrorCode {
     CATEGORY_DEPTH(HttpStatus.CONFLICT),
     CATEGORY_PARENT_INACTIVE(HttpStatus.CONFLICT),
     CATEGORY_LAST_ACTIVE(HttpStatus.CONFLICT),
-    CATEGORY_IN_USE(HttpStatus.CONFLICT);
+    CATEGORY_IN_USE(HttpStatus.CONFLICT),
+
+    EXPENSE_CATEGORY_UNAVAILABLE(HttpStatus.CONFLICT);
 
     private final HttpStatus status;
 
