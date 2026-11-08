@@ -140,6 +140,22 @@ class ExpenseServiceTest {
                 .matching(ExpenseReclassified::after, new ExpenseSnapshot(TODAY, 12000L, milk.id()));
     }
 
+    // 거부되면 트랜잭션이 통째로 되돌아가 함께 바꾼 금액도 저장되지 않는다 (04 설계 4.2)
+    @Test
+    @DisplayName("비용 재분류 - 꺼진 비용 분류로 → EXPENSE_CATEGORY_UNAVAILABLE, 값 그대로")
+    void reclassifyToInactiveRejected(AssertablePublishedEvents events) {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+        categoryService.deactivate(STORE_ID, milk.id());
+
+        assertFails(ErrorCode.EXPENSE_CATEGORY_UNAVAILABLE,
+                () -> expenseService.update(STORE_ID, registered.id(), milk.id(), 12000L, TODAY, null));
+
+        assertThat(jdbc.queryForMap("SELECT category_id, amount FROM expense.expenses"))
+                .containsEntry("category_id", beans.id())
+                .hasEntrySatisfying("amount", amount -> assertThat(((Number) amount).longValue()).isEqualTo(35000L));
+        assertThat(events.ofType(ExpenseReclassified.class)).isEmpty();
+    }
+
     private int count() {
         return jdbc.queryForObject("SELECT COUNT(*) FROM expense.expenses", Integer.class);
     }
