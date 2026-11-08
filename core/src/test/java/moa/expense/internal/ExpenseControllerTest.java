@@ -2,6 +2,7 @@ package moa.expense.internal;
 
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -136,6 +137,17 @@ class ExpenseControllerTest {
                 .andExpect(status().isNoContent());
 
         then(expenseService).should().delete(1L, 7L);
+    }
+
+    @Test
+    @DisplayName("비용 삭제 - 없는 비용 → 404 NOT_FOUND")
+    void deleteNotFound() throws Exception {
+        willThrow(new MoaException(ErrorCode.NOT_FOUND, "expense not found: 99"))
+                .given(expenseService).delete(1L, 99L);
+
+        mvc.perform(delete("/api/stores/1/expenses/99"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
 
     @Test
