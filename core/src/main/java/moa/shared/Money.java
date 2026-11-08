@@ -8,7 +8,15 @@ public class Money {
     }
 
     public static Money create(long amount) {
-        return new Money(amount);
+        return new Money(validAmount(amount));
+    }
+
+    private static long validAmount(long amount) {
+        if (amount < 0) {
+            throw new IllegalArgumentException("amount must not be negative");
+        }
+
+        return amount;
     }
 
     public long getAmount() {
