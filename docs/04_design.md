@@ -408,7 +408,7 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 
 | 값 객체 | 내용 | 규칙 |
 |---|---|---|
-| `Money` | `long amount` (원) | 음수 불가. `plus`, `minus`(결과 음수 허용은 호출자가 결정), `isZero`. JPA에서는 `@Embeddable`, 컬럼 `DECIMAL(15,0)`. 필드에 `@Column(columnDefinition = "DECIMAL(15,0)")` 필요 → 없으면 `validate`에서 앱이 뜨지 않음 (2026-11-06 확인, 2026-11-07 반영) |
+| `Money` | `long amount` (원) | 음수 불가, 0은 허용. `plus`, `isZero`. 값이라 금액이 같으면 같다 (`equals`·`hashCode`). 바꾸지 않고 새로 만든다 (`plus`는 새 `Money`를 돌려줌). 9자리 상한은 없다 → 합계는 9자리를 넘을 수 있어서 SalesLine·Expense가 검사. `minus`는 4주차 budget에서 (결과 음수 허용은 그때 정함). JPA에서는 `@Embeddable`, 컬럼 `DECIMAL(15,0)`. 필드에 `@Column(columnDefinition = "DECIMAL(15,0)")` 필요 → 없으면 `validate`에서 앱이 뜨지 않음 (2026-11-06 확인, 2026-11-07 반영). kei 구현 PR #4 (2026-11-08) |
 
 - `YearMonth`와 `LocalDate`는 Java 표준을 그대로 쓴다
 - ID는 `Long`. StoreId 같은 래퍼는 두지 않는다 → 왜: 토이 규모에서 얻는 것보다 JPA 매핑 부담이 큼
@@ -1337,7 +1337,7 @@ CREATE TABLE sales.daily_sales_lines (
 
 | 파일 | 변경 |
 |---|---|
-| `moa/shared/Money.java` | kei가 11/08 첫 작업으로 작은 PR (D4-12 A) |
+| `moa/shared/Money.java` | kei PR #4로 머지됨 (2026-11-08, D4-12 A) |
 | `moa/shared/ErrorCode.java` | 3.3의 새 오류 코드 |
 | store | 없음. `StoreRegistered`를 받기만 한다 |
 
@@ -1429,7 +1429,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 |---|---|---|
 | `id` · `storeId` | Long | DB 생성 · ID 참조 |
 | `categoryId` | Long | ID 참조 (category). 하위, 또는 하위 없는 상위 |
-| `amount` | `Money` (D4-12 A. 11/08 오후까지 없으면 잠시 `long`) | 1 ~ 999,999,999 |
+| `amount` | `Money` (D4-12 A, PR #4) | 1 ~ 999,999,999 |
 | `expenseDate` | LocalDate | 오늘까지 |
 | `memo` | String, null 가능 | 0~200자 |
 | `classifiedBy` · `approved` | `ClassifiedBy` (USER, AI) · boolean | Phase 1은 USER · true |
@@ -1566,7 +1566,7 @@ CREATE TABLE expense.expenses (
 
 | 파일 | 변경 |
 |---|---|
-| `moa/shared/Money.java` | 바뀌지 않음. kei의 PR이 먼저 머지됨 (D4-12 A). 11/08 오후까지 없으면 expense는 `long`으로 시작 |
+| `moa/shared/Money.java` | 바뀌지 않음. kei의 PR #4가 먼저 머지됨 (D4-12 A) |
 | `moa/shared/ErrorCode.java` | `EXPENSE_CATEGORY_UNAVAILABLE` (409) |
 | `moa/category/CategoryService.java` | `isSelectable`, `idsWithChildren` (D4-3) + 테스트 |
 | `moa/category/internal/NoExpenseYet.java` | **삭제** (완료 조건) |
