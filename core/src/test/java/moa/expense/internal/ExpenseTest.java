@@ -49,7 +49,22 @@ class ExpenseTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    @DisplayName("비용 등록 - 메모 201자 · 줄바꿈 → 거부, 공백뿐이면 없음")
+    void memoRules() {
+        assertThat(withMemo("가".repeat(200)).getMemo()).hasSize(200);
+        assertThat(withMemo("  원두 2kg  ").getMemo()).isEqualTo("원두 2kg");
+        assertThat(withMemo("   ").getMemo()).isNull();
+        assertThat(withMemo(null).getMemo()).isNull();
+        assertThatThrownBy(() -> withMemo("가".repeat(201))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> withMemo("원두\n2kg")).isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static Expense register(Long amount) {
         return Expense.register(STORE_ID, BEANS, amount, TODAY, null, TODAY);
+    }
+
+    private static Expense withMemo(String memo) {
+        return Expense.register(STORE_ID, BEANS, 1000L, TODAY, memo, TODAY);
     }
 }
