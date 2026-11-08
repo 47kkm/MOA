@@ -46,4 +46,12 @@ class MoneyTest {
 
         assertThat(money.isZero()).isTrue();
     }
+
+    @Test
+    @DisplayName("금액 0 체크 - 0원이 아님 → false")
+    void isNotZeroWhenPositive() {
+        Money money = Money.create(1);
+
+        assertThat(money.isZero()).isFalse();
+    }
 }
