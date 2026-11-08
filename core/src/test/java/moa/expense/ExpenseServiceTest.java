@@ -228,6 +228,26 @@ class ExpenseServiceTest {
         assertThat(list.count()).isEqualTo(3);
     }
 
+    // 상위면 자신 + 하위 전부(꺼진 것 포함), 하위면 자신만, 없는 ID면 빈 목록. 합계 · 건수도 필터 기준 (04 설계 4.2)
+    @Test
+    @DisplayName("비용 목록 조회 - 상위 필터 → 하위 포함")
+    void listFilterIncludesChildren() {
+        ExpenseInfo bean = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+        ExpenseInfo dairy = expenseService.register(STORE_ID, milk.id(), 12000L, TODAY, null);
+        expenseService.register(STORE_ID, rent.id(), 1_000_000L, TODAY, null);
+        categoryService.deactivate(STORE_ID, milk.id());
+        YearMonth october = YearMonth.of(2026, 10);
+
+        ExpenseList byTop = expenseService.list(STORE_ID, october, food.id());
+
+        assertThat(byTop.items()).extracting(ExpenseInfo::id).containsExactly(dairy.id(), bean.id());
+        assertThat(byTop.total()).isEqualTo(47000L);
+        assertThat(byTop.count()).isEqualTo(2);
+        assertThat(expenseService.list(STORE_ID, october, beans.id()).items())
+                .extracting(ExpenseInfo::id).containsExactly(bean.id());
+        assertThat(expenseService.list(STORE_ID, october, 999L).items()).isEmpty();
+    }
+
     private int count() {
         return jdbc.queryForObject("SELECT COUNT(*) FROM expense.expenses", Integer.class);
     }
