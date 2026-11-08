@@ -264,6 +264,16 @@ class ExpenseServiceTest {
                 });
     }
 
+    // category는 CategoryUsage 인터페이스만 안다. 구현은 expense에 있고, 여기서 진짜 비용으로 센다 (04 설계 0.3, 4.7)
+    @Test
+    @DisplayName("분류 삭제 - 비용이 있는 비용 분류 → CATEGORY_IN_USE (실제 비용으로)")
+    void deleteCategoryInUse() {
+        expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+
+        assertFails(ErrorCode.CATEGORY_IN_USE, () -> categoryService.delete(STORE_ID, beans.id()));
+        assertFails(ErrorCode.CATEGORY_IN_USE, () -> categoryService.delete(STORE_ID, food.id()));
+    }
+
     private int count() {
         return jdbc.queryForObject("SELECT COUNT(*) FROM expense.expenses", Integer.class);
     }
