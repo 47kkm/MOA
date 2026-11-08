@@ -595,6 +595,23 @@ class CategoryServiceTest {
         assertThat(categoryService.isSelectable(STORE_ID, food.id())).isFalse();
     }
 
+    // expense가 비용 목록의 비용 분류 필터에 쓴다 (04 설계 4.2 "비용 목록 조회", 4.7)
+    @Test
+    @DisplayName("분류와 하위 ID - 상위 → 자신과 하위 전부(꺼진 것 포함), 하위 → 자신, 없는 ID → 빈 집합")
+    void idsWithChildren() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo milk = categoryService.add(STORE_ID, food.id(), "유제품");
+        categoryService.deactivate(STORE_ID, milk.id());
+        categoryService.add(STORE_ID, null, "임대료");
+
+        assertThat(categoryService.idsWithChildren(STORE_ID, food.id()))
+                .containsExactlyInAnyOrder(food.id(), beans.id(), milk.id());
+        assertThat(categoryService.idsWithChildren(STORE_ID, beans.id())).containsExactly(beans.id());
+        assertThat(categoryService.idsWithChildren(STORE_ID, 999L)).isEmpty();
+        assertThat(categoryService.idsWithChildren(2L, food.id())).as("다른 매장").isEmpty();
+    }
+
     // expense(비용 목록의 분류 경로)와 report(분류별 집계 이름)가 쓴다 (04 설계 2.7)
     @Test
     @DisplayName("분류 정보 - 요청한 ID의 경로, 건수는 0, 없는 ID는 빠짐")
