@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -41,6 +42,13 @@ class ExpenseController {
     @ResponseStatus(HttpStatus.CREATED)
     ExpenseInfo register(@PathVariable Long storeId, @RequestBody ExpenseRequest request) {
         return expenseService.register(storeId, request.categoryId(), request.amount(), request.date(), request.memo());
+    }
+
+    // 수정과 재분류는 같은 경로. 비용 분류가 바뀌었는지는 서비스가 본다 (04 설계 D4-1)
+    @PutMapping("/{id}")
+    ExpenseInfo update(@PathVariable Long storeId, @PathVariable Long id, @RequestBody ExpenseRequest request) {
+        return expenseService.update(storeId, id, request.categoryId(), request.amount(), request.date(),
+                request.memo());
     }
 
     // 금액은 숫자 하나 (04 설계 D4-10). 빠진 칸은 null로 들어와 Expense가 400으로 거부한다
