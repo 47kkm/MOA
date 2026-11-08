@@ -23,6 +23,10 @@ public class Money {
         return create(this.amount + money.getAmount());
     }
 
+    public boolean isZero() {
+        return this.amount == 0;
+    }
+
     public long getAmount() {
         return amount;
     }
