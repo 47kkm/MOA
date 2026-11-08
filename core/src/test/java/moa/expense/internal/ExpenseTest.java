@@ -40,6 +40,15 @@ class ExpenseTest {
         assertThatThrownBy(() -> register(1_000_000_000L)).isInstanceOf(IllegalArgumentException.class);
     }
 
+    // 오늘은 밖(응용 서비스)이 Clock으로 구해 넘긴다. 애그리거트는 Clock을 모른다 (04 설계 4.4)
+    @Test
+    @DisplayName("비용 등록 - 미래 날짜 → 거부 (오늘은 허용)")
+    void rejectsFutureDate() {
+        assertThat(Expense.register(STORE_ID, BEANS, 1000L, TODAY, null, TODAY).getExpenseDate()).isEqualTo(TODAY);
+        assertThatThrownBy(() -> Expense.register(STORE_ID, BEANS, 1000L, TODAY.plusDays(1), null, TODAY))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static Expense register(Long amount) {
         return Expense.register(STORE_ID, BEANS, amount, TODAY, null, TODAY);
     }
