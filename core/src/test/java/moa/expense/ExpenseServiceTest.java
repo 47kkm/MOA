@@ -170,6 +170,18 @@ class ExpenseServiceTest {
         assertThat(jdbc.queryForObject("SELECT amount FROM expense.expenses", Long.class)).isEqualTo(30000L);
     }
 
+    // 메모 앞뒤 공백만 다른 것도 바뀐 것이 아니다. Expense.change가 다듬은 뒤 비교한다 (04 설계 4.3, D4-2)
+    @Test
+    @DisplayName("비용 수정 - 바뀐 것 없음 → 이벤트 없음")
+    void updateWithoutChangePublishesNothing(AssertablePublishedEvents events) {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, "원두 2kg");
+
+        expenseService.update(STORE_ID, registered.id(), beans.id(), 35000L, TODAY, " 원두 2kg ");
+
+        assertThat(events.ofType(ExpenseUpdated.class)).isEmpty();
+        assertThat(events.ofType(ExpenseReclassified.class)).isEmpty();
+    }
+
     private int count() {
         return jdbc.queryForObject("SELECT COUNT(*) FROM expense.expenses", Integer.class);
     }
