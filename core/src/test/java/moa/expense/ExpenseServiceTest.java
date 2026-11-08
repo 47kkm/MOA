@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
@@ -208,6 +209,23 @@ class ExpenseServiceTest {
                 .contains(ExpenseDeleted.class)
                 .matching(e -> e.expenseId().equals(registered.id()) && e.amount() == 35000L
                         && e.categoryId().equals(beans.id()) && e.date().equals(TODAY));
+    }
+
+    // 페이지 나누기 없음. 한 달 150건 안쪽 (04 설계 4.2, 기획서 P4-5)
+    @Test
+    @DisplayName("비용 목록 조회 - 그 달만, 날짜 역순 · 같은 날은 나중 입력이 위, 합계 · 건수")
+    void listMonth() {
+        ExpenseInfo first = expenseService.register(STORE_ID, beans.id(), 35000L, LocalDate.of(2026, 10, 5), null);
+        ExpenseInfo rentPaid = expenseService.register(STORE_ID, rent.id(), 1_000_000L, TODAY, null);
+        ExpenseInfo later = expenseService.register(STORE_ID, milk.id(), 12000L, LocalDate.of(2026, 10, 5), null);
+        expenseService.register(STORE_ID, beans.id(), 5000L, LocalDate.of(2026, 9, 30), null);
+
+        ExpenseList list = expenseService.list(STORE_ID, YearMonth.of(2026, 10), null);
+
+        assertThat(list.yearMonth()).isEqualTo(YearMonth.of(2026, 10));
+        assertThat(list.items()).extracting(ExpenseInfo::id).containsExactly(rentPaid.id(), later.id(), first.id());
+        assertThat(list.total()).isEqualTo(1_047_000L);
+        assertThat(list.count()).isEqualTo(3);
     }
 
     private int count() {
