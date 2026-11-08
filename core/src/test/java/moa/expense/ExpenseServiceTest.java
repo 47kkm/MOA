@@ -91,6 +91,17 @@ class ExpenseServiceTest {
         assertThat(count()).isZero();
     }
 
+    // 비용은 건별이라 중복 검사를 하지 않는다 (04 설계 4.3, 기획서 4.1)
+    @Test
+    @DisplayName("비용 등록 - 같은 내용 두 번 → 두 건 저장")
+    void registerSameTwice() {
+        ExpenseInfo first = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, "원두 2kg");
+        ExpenseInfo second = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, "원두 2kg");
+
+        assertThat(second.id()).isNotEqualTo(first.id());
+        assertThat(count()).isEqualTo(2);
+    }
+
     private int count() {
         return jdbc.queryForObject("SELECT COUNT(*) FROM expense.expenses", Integer.class);
     }
