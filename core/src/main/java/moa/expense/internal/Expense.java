@@ -58,7 +58,7 @@ public class Expense {
     // Phase 1은 사장님이 직접 고르므로 USER · 승인됨 (04 설계 D4-7)
     public static Expense register(Long storeId, Long categoryId, Long amount, LocalDate date, String memo,
             LocalDate today) {
-        return new Expense(storeId, categoryId, validAmount(amount), date, memo);
+        return new Expense(storeId, categoryId, validAmount(amount), validDate(date, today), memo);
     }
 
     // 금액 규칙: 1 이상 999,999,999 이하 (04 설계 4.3). 상한은 입력 규칙이라 Money가 아닌 여기서 본다 → 합계는 9자리를 넘을 수 있다 (0.8)
@@ -67,6 +67,14 @@ public class Expense {
             throw new IllegalArgumentException("amount must be between 1 and " + MAX_AMOUNT);
         }
         return Money.create(amount);
+    }
+
+    // 날짜 규칙: 오늘까지 (04 설계 4.3). today는 응용 서비스가 Clock으로 구해 넘긴다
+    private static LocalDate validDate(LocalDate date, LocalDate today) {
+        if (date.isAfter(today)) {
+            throw new IllegalArgumentException("date must not be in the future");
+        }
+        return date;
     }
 
     public Long getId() {
