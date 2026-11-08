@@ -79,4 +79,28 @@ class ExpenseControllerTest {
                 .andExpect(jsonPath("$.items[0].id").value(7))
                 .andExpect(jsonPath("$.items[0].categoryActive").value(false));
     }
+
+    // 공통 핸들러가 Spring의 400을 VALIDATION으로 바꾼다 (04 설계 0.6, 4.7)
+    @Test
+    @DisplayName("비용 목록 조회 - yearMonth 없음 · 형식 오류 → 400 VALIDATION")
+    void listRequiresYearMonth() throws Exception {
+        mvc.perform(get("/api/stores/1/expenses"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION"));
+        mvc.perform(get("/api/stores/1/expenses").param("yearMonth", "2026-13"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION"));
+    }
+
+    @Test
+    @DisplayName("비용 등록 - 날짜 형식 오류 → 400 VALIDATION")
+    void registerRejectsBadDate() throws Exception {
+        mvc.perform(post("/api/stores/1/expenses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"categoryId": 11, "amount": 35000, "date": "2026/10/28"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION"));
+    }
 }
