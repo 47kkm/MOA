@@ -1,6 +1,6 @@
 -- 비용 (04 설계 4.8)
 -- created_at·updated_at은 DB가 채운다. 엔티티는 이 두 칸을 모른다 (04 설계 0.4)
--- V5: sales가 V4 (04 설계 D4-13). V5가 먼저 적용된 DB는 V4를 거부하므로 sales PR이 먼저 머지된다
+-- V4: expense가 sales보다 먼저 머지되어 V4, sales는 V5 (04 설계 D4-13, 2026-11-10 맞바꿈)
 CREATE TABLE expense.expenses
 (
   id            BIGINT        AUTO_INCREMENT PRIMARY KEY,
