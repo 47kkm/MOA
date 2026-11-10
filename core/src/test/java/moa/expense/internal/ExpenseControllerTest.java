@@ -161,4 +161,17 @@ class ExpenseControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION"));
     }
+
+    // 금액은 원 단위 정수. 소수를 잘라 1000으로 저장하지 않고 거부한다 (04 설계 D4-15)
+    @Test
+    @DisplayName("비용 등록 - 소수 금액 → 400 VALIDATION")
+    void registerRejectsDecimalAmount() throws Exception {
+        mvc.perform(post("/api/stores/1/expenses")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"categoryId": 11, "amount": 1000.5, "date": "2026-10-28"}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION"));
+    }
 }
