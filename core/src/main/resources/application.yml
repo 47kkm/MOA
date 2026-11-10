@@ -21,6 +21,11 @@ spring:
     default-schema: moa
     schemas: moa,store,category,sales,expense,budget,report
 
+  # 정수 칸(금액, id)에 소수(1000.5)가 오면 잘라 저장하지 않고 400으로 거부한다. 모든 모듈에 적용 (04 설계 D4-15)
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+
   modulith:
     events:
       republish-outstanding-events-on-restart: true   # 미완료 발행은 다시 뜰 때 재실행 (04 설계 0.3)
