@@ -1296,7 +1296,7 @@ report ── 조회 ──▶ sales                  기간·결제수단별 �
 
 ### 3.8 테이블·파일 [참고]
 
-`db/migration/sales/V4__create_sales.sql` (D4-13)
+`db/migration/sales/V5__create_sales.sql` (D4-13. 처음엔 V4, 2026-11-10 expense와 맞바꿈)
 
 ```sql
 CREATE TABLE sales.payment_methods (
@@ -1343,7 +1343,7 @@ CREATE TABLE sales.daily_sales_lines (
 
 ## 4. expense 모듈
 
-- 상태: **kei 검토 완료** (11/07 ★ 7개 결정, 11/08 4.3 규칙 확인). Claude 구현 11/08~
+- 상태: **kei 검토 완료** (11/07 ★ 7개 결정, 11/08 4.3 규칙 확인). Claude 구현 PR #5 (11/08 열림, 11/10 D4-13 번호 맞바꿈 · D4-15·16 반영, kei 머지 대기)
 - kei가 정할 것 7개는 4.6에 ★로 표시하고 추천을 적었다. 정해지면 ★를 지우고 결론을 적는다. 7개 모두 2026-11-07 결정 (전부 추천안)
 
 ### 4.1 한눈에 [검토]
@@ -1462,6 +1462,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 | 통합 | 비용 목록 조회 - 상위 필터 → 하위 포함 | 필터 |
 | 통합 | 분류 삭제 - 비용이 있는 비용 분류 → CATEGORY_IN_USE (실제 비용으로) | `CategoryUsage` 구현 |
 | 통합 | 분류 선택 가능 확인 - 하위 있는 상위 · 꺼진 것 · 없는 것 → false (category) | D4-3, D4-4 |
+| HTTP | 비용 등록 - 소수 금액 → 400 VALIDATION | D4-15 |
 
 - 프론트 몫: 포커스, 버튼 비활성, 하위 줄 펼침, 토스트, 월 이동, 저장하고 계속, 예산 선 넘김 표시(budget과 함께)
 - 경계 "category는 expense를 모름"은 기존 `ModularityTest`가 맡는다
@@ -1482,8 +1483,10 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 | D4-10 | 요청·응답의 금액 | 숫자 하나 (`"amount": 35000`) | 프론트가 객체를 풀 필요 없음 |
 | D4-11 | 기간·분류별 비용 합계를 만드는 때 | **확정 (kei, 2026-11-07)** 4주차 report·budget 설계와 함께 | 모양이 받는 쪽에 달림. 지금 만들면 고칠 가능성이 큼 |
 | D4-12 | `Money`를 누가 먼저 쓰나 | **확정 (kei, 2026-11-07)** 아래 표의 A | 위치(`moa.shared`)는 0.8에서 정해짐. sales와 expense가 둘 다 11/08 시작 |
-| D4-13 | Flyway 번호 | sales `V4`, expense `V5` | 같은 날 만들어 번호를 미리 나눔. `V5`가 먼저 머지되면 로컬 DB가 `V4`를 거부하므로 sales 쪽이 먼저 |
+| D4-13 | Flyway 번호 | **바꿈 (kei, 2026-11-10)** expense `V4`, sales `V5` (처음엔 sales `V4`, expense `V5`) | 큰 번호가 먼저 적용된 DB는 작은 번호를 거부하므로, 먼저 머지되는 쪽이 작은 번호. sales가 11/14 뒤로 밀려 expense가 먼저 |
 | D4-14 | expense PR에서 kei가 할 것 | **확정 (kei, 2026-11-07)** 조각 없음, 질문 2개만 | 6.1의 조각은 AI가 짜는 1·2·4주차 규칙. 3주차는 sales 전체가 kei 손 |
+| D4-15 | 정수 칸에 소수 (`"amount": 1000.5`) | **확정 (kei, 2026-11-10)** 400 `VALIDATION`으로 거부. `application.yml`의 `spring.jackson.deserialization.accept-float-as-int: false` | Jackson 기본은 잘라서 받아 1000으로 조용히 저장됨 (PR #5에서 확인). 금액은 원 단위 정수. 설정 하나라 모든 모듈에 적용 → sales 금액도 같이 막힘 |
+| D4-16 | 메모만 고친 수정 | **확정 (kei, 2026-11-10)** `ExpenseUpdated`를 그대로 발행 (이전·이후의 금액·비용 분류가 같음) | D4-2 "저장 한 번 = 이벤트 하나" 그대로. budget은 차이가 0이라 바뀌는 것 없음 |
 
 **D4-12 `Money` 순서**
 
@@ -1543,7 +1546,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 
 ### 4.8 테이블·파일 [참고]
 
-`db/migration/expense/V5__create_expenses.sql` (D4-13)
+`db/migration/expense/V4__create_expenses.sql` (D4-13)
 
 ```sql
 CREATE TABLE expense.expenses (
@@ -1571,6 +1574,7 @@ CREATE TABLE expense.expenses (
 | `moa/category/CategoryService.java` | `isSelectable`, `idsWithChildren` (D4-3) + 테스트 |
 | `moa/category/internal/NoExpenseYet.java` | **삭제** (완료 조건) |
 | `StoreRegisteredListenerTest` | `FakeCategoryUsage`를 넣음. 지금은 `NoExpenseYet`에 기대어 떠서, 지우면 뜨지 않는다 |
+| `application.yml` | `spring.jackson.deserialization.accept-float-as-int: false` (D4-15, 모든 모듈) |
 
 ---
 
