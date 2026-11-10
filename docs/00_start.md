@@ -404,7 +404,7 @@ Phase 1 전체를 한 번에 검토할 수 없으므로 **모듈 → 기능 → 
 | 테스트 DB | Testcontainers (MySQL) | H2는 MySQL DDL과 어긋남. Docker 있으므로 실제 MySQL 사용. 단위 테스트는 DB 없이 순수 Java |
 | 백엔드 테스트 | JUnit 5 · AssertJ · Mockito · ArchUnit | `@WebMvcTest`, `@DataJpaTest`(+Testcontainers) 레이어별 단위 테스트 |
 | LLM 연동 (Phase 2) | **Spring AI** | `ChatModel` 추상화에 Anthropic/Ollama 구현체 내장 → 4.5의 `LLMClient` 포트 역할. Phase 1에서는 의존성 미추가 |
-| 프론트 프레임워크 | **React** + Vite + TypeScript (2026-10-27 변경. 이전: Nuxt 3 + Vue 3) | Node v22 확인됨. 바꾼 이유: 시장의 React 수요와 지원 직무 요건(React). 사용자는 Vue/Nuxt 경험이 많고 React는 운영 경험만 있어, MOA 프론트로 React를 처음부터 끝까지 해 본다. 서버 렌더링이 필요 없는 대시보드라 Next.js가 아니라 Vite SPA. 라우터·서버 상태 라이브러리는 5주차 시작 때 정함 |
+| 프론트 프레임워크 | **React** + Vite + TypeScript (2026-10-27 변경. 이전: Nuxt 3 + Vue 3) | Node v22 확인됨. 바꾼 이유: 시장의 React 수요. 사용자는 Vue/Nuxt 경험이 많고 React는 운영 경험만 있어, MOA 프론트로 React를 처음부터 끝까지 해 본다. 서버 렌더링이 필요 없는 대시보드라 Next.js가 아니라 Vite SPA. 라우터·서버 상태 라이브러리는 5주차 시작 때 정함 |
 | 패키지 매니저 | npm | pnpm/yarn 미설치. 필요 시 corepack으로 전환 |
 | 프론트 테스트 | Vitest + React Testing Library | |
 | UI / 차트 | Tailwind CSS / ECharts | 브랜드 방향 "깔끔한 대시보드, 직관적 시각화" (2026-10-27 Nuxt UI에서 변경) |
@@ -508,7 +508,7 @@ kei의 출발점: 자바 기본 문법, 기존 컨트롤러·서비스·매퍼 �
 | 3주차 시작 전 (11/05 확인에서 막히면). 11/06 확인 결과 선택, 주말에 여유 있으면 | Spring 기초 | 김영한 『스프링 핵심 원리 - 기본편』 중 "스프링 컨테이너와 스프링 빈", "컴포넌트 스캔", "의존관계 자동 주입" | 빈·주입·컴포넌트 스캔. sales를 직접 짜려면 읽는 걸 넘어 써야 함 |
 | 3주차 | 응용 서비스 구조 | 책 6장 (응용 서비스와 표현 영역) | 컨트롤러·서비스·도메인의 역할 분리. 없으면 규칙이 서비스로 새어 나감 |
 | 4주차 시작 전 | budget·report 모듈 | 강의 섹션 6 연관관계 매핑 기초. 책 4장 뒷부분 (밸류 컬렉션, 로딩 전략, 영속성 전파). 책 5장 (조회) 앞부분. MyBatis 여부는 그때 판단 | budget 항목 목록이 처음 나오는 연관관계 (04 5장의 cascade 결정). 리포트는 애그리거트가 아니라 조회 모델 |
-| 11/15~16 (지원 제출 뒤 주말) | React 기본기 | react.dev "Learn"의 Describing the UI · Adding Interactivity · Managing State, Escape Hatches 중 Effect 부분 | Vue 출신이 걸리는 곳: 컴포넌트 함수 전체가 다시 실행됨, `useEffect` 의존성, 상태는 새 객체로 바꿈, `v-model` 없음 |
+| 11/15~16 | React 기본기 | react.dev "Learn"의 Describing the UI · Adding Interactivity · Managing State, Escape Hatches 중 Effect 부분 | Vue 출신이 걸리는 곳: 컴포넌트 함수 전체가 다시 실행됨, `useEffect` 의존성, 상태는 새 객체로 바꿈, `v-model` 없음 |
 | 5주차 | 프론트 (React) | 역할 분담은 5주차 시작 때 정함. 포트폴리오로 설명하려면 사용자가 직접 쓰는 몫이 커야 함. 범위가 넘치면 기획서 선택 기능부터 뺌 | 프론트 경험은 많지만 React로 처음부터 짜는 건 처음 |
 | 선택 | HTTP | 김영한 HTTP 기본 두 섹션 | 2주차에 여유 있으면 |
 
