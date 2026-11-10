@@ -1578,6 +1578,258 @@ CREATE TABLE expense.expenses (
 
 ---
 
-## 5. budget 모듈 (예정, 4주차)
+## 5. budget 모듈
+
+- 상태: **Claude 초안 2026-11-10. kei ★ 결정 대기 (주말 리뷰). 구현은 결정 뒤**
+- kei가 정할 것 5개는 5.6에 ★로 표시하고 추천을 적었다. 정해지면 ★를 지우고 결론을 적는다
+- report(6장)는 sales 매출이 있어야 하므로 sales 뒤에 설계한다. 이 장은 budget만 다룬다
+
+### 5.1 한눈에 [검토]
+
+```
+budget ── totals ──▶ expense                         소진 · 지난 달 실제 (그 달 비용 합, 상위별). 소진은 저장하지 않고 계산 (★D5-1)
+budget ── tops · infoOf ──▶ category                 예산 항목에 고를 수 있는 상위, 행 순서·이름·꺼짐, 하위 → 상위
+expense ── ExpenseRegistered · Updated · Reclassified · Deleted ──▶ budget   BudgetSpentUpdated · BudgetExceeded 발행
+report ── status ──▶ budget                          대시보드 예산 카드 · 리포트 예산 대비 (6장, sales 뒤)
+```
+
+| 기능 | 우선순위 | 화면 |
+|---|---|---|
+| 월 예산 설정 · 월 예산 현황 조회 | 필수 | 예산 |
+| 소진액 갱신 · 예산 초과 감지 | 필수 | 없음 (비용 이벤트를 받아 자동) |
+| 지난 달 예산 복사 | 선택 | 예산. 백엔드 없음: 프론트가 전 달 현황으로 입력란을 채운다 (D5-7) |
+| 연간 예산 조회 | Phase 2 후보 | — (P5-9) |
+
+- 매출과는 연결하지 않는다. 예산은 월 단위 · 비용에 대한 것 (요구사항정의서 8.5, 기획서 5.1) → budget은 sales를 모른다
+- 의존: budget → expense · category 한 방향. expense와 category는 budget을 모른다 (`ModularityTest`) · 스키마 `budget`
+
+### 5.2 기능 흐름 [검토]
+
+**월 예산 설정** `PUT .../budgets/2026-11 {total, lines: [{categoryId, amount}]}`
+
+```
+BudgetService.set(storeId, yearMonth, total, lines)
+ ├ 입력 규칙 (총액 · 항목 금액 · 합 ≤ 총액 · 중복 · 이번 달/다음 달만)     ✗ 400 VALIDATION  [안]
+ ├ category.tops(storeId) 로 항목마다
+ │   켜진 상위? 아니면 그 달에 이미 있던 항목? (꺼져도 유지·수정, P5-7)   ✗ 409 BUDGET_CATEGORY_UNAVAILABLE  [밖]
+ ├ 그 달 예산 있음 → change (덮어쓰기). 바뀐 것 없으면 이벤트 없음
+ │ 없음 → MonthlyBudget.set → save
+ ══ 커밋 ══
+ → MonthlyBudgetSet → 200 + BudgetStatus (현황 조회와 같은 모양)
+```
+
+- 빈칸 · 0 항목은 프론트가 빼고 보낸다 (기획서 5.4). 하위 비용 분류는 화면에 행이 없지만 오면 409 (요구사항정의서 8.5 "거부")
+
+**월 예산 현황 조회** `GET .../budgets/2026-11`
+
+```
+BudgetService.status(storeId, yearMonth)
+ ├ 월 예산 (없을 수 있음)
+ ├ expense.totals(그 달)   → 상위별 소진(하위 포함) · 총소진
+ ├ expense.totals(전 달)   → 지난 달 실제
+ ├ category.tops(storeId)  → 행 순서 · 이름 · 꺼짐
+ → 행: 켜진 상위 전부 + 항목이 있는 꺼진 상위 "(꺼짐)". 지워진 비용 분류의 항목은 뺌 (★D5-4)
+ → 행마다 BudgetUsage(예산, 소진) → 잔여 · 소진율 · 구간
+ → 200 BudgetStatus. 예산 없는 달도 200 (예산 칸만 null, 소진 · 지난 달 실제는 있음)
+```
+
+**소진액 갱신 · 예산 초과 감지** (화면 없음)
+
+```
+ExpenseRegistered / Updated / Reclassified / Deleted   (커밋 후 · 동기 · REQUIRES_NEW, 0.3)
+ → (달, 비용 분류, ±금액) 목록으로 바꿈. 수정 · 재분류는 이전 −, 이후 + (D4-2의 이전 · 이후 값)
+ → 달마다: 그 달 예산 없음 → 끝 (요구사항정의서 8.5 "무시")
+     category.infoOf → 하위를 상위로
+     expense.totals(그 달) → 지금 소진 (= 이후).  이전 = 이후 − 이번 변화
+     → 바뀐 상위마다 BudgetSpentUpdated
+     → 항목 · 총액이 100% 선을 아래 → 위로 넘었으면 BudgetExceeded
+ → budget이 저장하는 것은 없다. 다시 실행돼도 숫자가 틀어지지 않는다 (★D5-1)
+ → 단, 다시 실행되면 BudgetExceeded가 한 번 더 나갈 수 있다. Phase 1에는 받는 모듈이 없어 그대로 둔다
+```
+
+### 5.3 규칙 [검토]
+
+| 규칙 | 안/밖 | 어기면 | 근거 |
+|---|---|---|---|
+| 총액 필수, 항목 금액 선택. 둘 다 1 이상 999,999,999 이하 | 안 | 400 `VALIDATION` | 기획서 5.4, P5-2, P5-10 |
+| 항목 합 ≤ 총액 (같으면 허용). 차이는 미배정 | 안 | 400 `VALIDATION` | 요구사항정의서 8.5, P5-2 |
+| 한 비용 분류에 항목 하나 | 안 | 400 `VALIDATION` | 화면에서 나올 수 없음 (D2-15와 같은 처리) |
+| 고칠 수 있는 달은 이번 달 · 다음 달 | 안 (이번 달을 인자로 받음) | 400 `VALIDATION` | P5-1 |
+| 월 예산은 연월당 하나. 다시 설정 = 덮어쓰기 | 밖 (리포지토리) + 유니크 인덱스 | — | 요구사항정의서 8.5, 기획서 5.4 |
+| 항목은 상위 비용 분류만. 새 항목은 켜진 상위만 | 밖 (category) | 409 `BUDGET_CATEGORY_UNAVAILABLE` | 요구사항정의서 8.5 · D9, P5-7 |
+| 그 달에 이미 있던 항목은 비용 분류가 꺼져도 유지 · 수정 · 빼기 가능 | 밖 | — | P5-7 |
+| 소진 = 그 달 비용 합. 하위는 상위로. 예산이 없어도 계산됨 | 밖 (expense) | — | 용어집 "소진액", 기획서 5.3 "소진액 반영 시점" |
+| 예산을 넘어도 비용 등록은 막지 않음 | — | — | 요구사항정의서 D12 |
+| 잔여 = 예산 − 소진. 음수를 0으로 깎지 않음 | 안 (`BudgetUsage`) | — | 요구사항정의서 8.5 |
+| 소진율 = 소진 ÷ 예산, 정수 %로 반올림 (51%, 109%) | 안 (`BudgetUsage`) | — | 기획서 5.2 · 5.6 숫자 |
+| 구간: 80% 미만 기본 · 80% 이상 주의 · 100% 이상 초과. 반올림 전 값으로 판단 | 안 (`BudgetUsage`) | — | P5-4, D5-9 |
+| 예산 초과 = 100% 선을 아래 → 위로 넘는 순간 한 번. 내려갔다 다시 넘으면 다시 | 밖 (리스너) | — | 요구사항정의서 8.5, 기획서 5.5 |
+| 월 예산 삭제 없음 | — | — | P5-6 |
+
+- 다른 매장의 예산은 매장 접근 검사(1.2)가 막는다. 다른 매장의 비용 분류 ID는 `tops`에 없으므로 409
+- 소진 · 잔여 · 소진율은 저장하지 않는다. 매번 expense에서 계산 (★D5-1)
+
+### 5.4 애그리거트: MonthlyBudget (월 예산 한 장) [검토]
+
+월 예산 한 장 = 애그리거트 하나. 예산 항목은 그 안의 값이다 (항목만 따로 바뀌는 일이 없고, 덮어쓰기는 한 장을 통째로 바꾼다).
+
+| 필드 | 타입 | 규칙 |
+|---|---|---|
+| `id` · `storeId` | Long | DB 생성 · ID 참조 |
+| `month` | LocalDate (그 달 1일). `yearMonth()`로 꺼냄 | 연월당 하나 (유니크) |
+| `total` | `Money` | 총액. 1 ~ 999,999,999 |
+| `lines` | `List<BudgetLine>` (값 컬렉션, ★D5-2) | 상위 비용 분류마다 0~1개. 합 ≤ 총액 |
+
+| 값 | 필드 · 메서드 | 하는 일 |
+|---|---|---|
+| `BudgetLine` (예산 항목) | `categoryId` (상위) · `amount` (`Money`) | 저장됨. 같은 값이면 같다 |
+| `BudgetUsage` (예산 대비 소진) | `of(budget, spent)` → `remaining()` long · `ratePercent()` int · `level()` | 저장 안 함. 구간 규칙이 사는 곳 |
+| `BudgetLevel` | `NORMAL` · `WARNING` · `OVER` | 기획서 P5-4의 기본 · 주황 · 빨강 |
+
+| 메서드 | 하는 일 |
+|---|---|
+| `MonthlyBudget.set(storeId, yearMonth, total, lines, thisMonth)` (정적) | 새로 잡기. 입력 규칙 검사 |
+| `change(total, lines, thisMonth)` | 덮어쓰기. 바뀌었으면 true (`Expense.change`와 같은 모양) |
+| `lineOf(categoryId)` | 그 상위의 항목 (없으면 빈 값) |
+| `unassigned()` | 미배정 = 총액 − 항목 합 |
+
+- 소진은 애그리거트에 없다. 예산은 "얼마를 쓰기로 했나"만 안다 (★D5-1). `thisMonth`를 인자로 받는다 (`Clock`을 모름, `Expense`와 같음)
+- 잔여는 `Money`가 아니라 `long`이다. 음수가 될 수 있어서. kei의 `Money`는 바꾸지 않고 `minus`도 더하지 않는다 (0.8의 "minus는 4주차"를 닫음)
+- 항목 수 상한은 따로 두지 않는다. 상위 비용 분류가 20개까지라 (2.3) 항목도 20개를 넘지 않는다
+
+### 5.5 테스트 목록 [검토]
+
+규칙과 결정을 지키는 테스트만 적는다. 정상 경로 · HTTP 테스트는 구현 때 더한다.
+
+| 층 | `@DisplayName` | 지키는 것 |
+|---|---|---|
+| 단위 | 월 예산 설정 - 총액 0 · 10억, 항목 금액 0 → 거부 (1, 999,999,999는 허용) | 금액 |
+| 단위 | 월 예산 설정 - 항목 합 5,000,001 > 총액 5,000,000 → 거부 (5,000,000은 허용) | 합 ≤ 총액 |
+| 단위 | 월 예산 설정 - 같은 비용 분류 항목 두 번 → 거부 | 중복 |
+| 단위 | 월 예산 설정 - 지난 달 · 두 달 뒤 → 거부 (이번 달 · 다음 달은 허용) | P5-1 |
+| 단위 | 월 예산 설정 - 바뀐 것 없음 → 변경 없음 | 바뀐 것 없는 덮어쓰기 |
+| 단위 | 월 예산 현황 조회 - 소진 1,599,999 · 1,600,000 · 2,000,000 / 예산 2,000,000 → 기본 · 주의 · 초과. 1,999,000은 100%로 보여도 주의 | 구간 경계, 반올림 전 판단 |
+| 단위 | 월 예산 현황 조회 - 소진 2,130,000 / 2,000,000 → 잔여 −130,000, 소진율 107% | 음수 그대로 |
+| 통합 | 월 예산 설정 - 하위 · 없는 · 꺼진 상위 새 항목 → BUDGET_CATEGORY_UNAVAILABLE | 상위 · 켜짐 |
+| 통합 | 월 예산 설정 - 꺼진 상위의 기존 항목 → 금액 수정 허용 | P5-7 |
+| 통합 | 월 예산 설정 - 다시 설정 → 덮어쓰기 (예산은 하나), MonthlyBudgetSet | 연월당 하나 |
+| 통합 | 월 예산 현황 조회 - 예산 전에 쌓인 비용 → 설정 직후 소진에 포함 | ★D5-1 |
+| 통합 | 월 예산 현황 조회 - 유제품 35,000 · 원두 180,000 → 식자재 소진 215,000 | 하위 합산 |
+| 통합 | 월 예산 현황 조회 - 비용 재분류 · 날짜 변경 · 삭제 → 바로 반영 | 계산 방식 |
+| 통합 | 월 예산 현황 조회 - 지워진 비용 분류의 항목 → 행 없음, 미배정에 포함 | ★D5-4 |
+| 통합 | 소진액 갱신 - 예산 없는 달의 비용 등록 → 이벤트 없음 | "무시" |
+| 통합 | 예산 초과 감지 - 1,990,000에 20,000 → BudgetExceeded, 이어서 5,000 → 없음 | 넘는 순간 한 번 |
+| 통합 | 예산 초과 감지 - 넘은 뒤 20,000 삭제 → 다시 20,000 등록 → BudgetExceeded | 다시 넘음 |
+| 통합 | 기간·분류별 비용 합계 - 상위별(하위 포함) · 하위별 · 전체 (expense) | `totals` |
+
+- 프론트 몫: 토스트(★D5-3), 입력란 비활성, 미배정 즉시 계산, 지난 달과 같게(D5-7), 소진율 색
+- 경계 "expense · category는 budget을 모름"은 `ModularityTest`가 맡는다
+
+### 5.6 결정 사항 [검토]
+
+| # | 결정 | 결론 | 이유 |
+|---|---|---|---|
+| D5-1 ★ | 소진액을 어디서 얻나 | **추천 A: 저장하지 않고 expense에서 계산** (`totals`). 리스너는 이벤트 발행만 | 아래 표 |
+| D5-2 ★ | 예산 항목 매핑 | **추천 A: `@ElementCollection` 값 컬렉션** | 아래 표 |
+| D5-3 ★ | 80% · 100% 알림을 누가 판단하나 (D4-9, 기획서 P5-5) | **추천 A: 구간은 서버(`BudgetUsage`)가 정하고, 넘었는지는 프론트가 비교.** 저장 전 현황 → 비용 저장 → 현황 다시 조회 → 그 상위(항목이 없으면 총액)의 구간이 올라갔으면 토스트 (주의 = 80%, 초과 = 100%) | 선 규칙은 도메인에 하나. 리스너가 동기라 저장 직후 조회가 맞음. 대안 B: budget이 "넘은 선"을 저장하고 프론트가 읽으면 지움 → 테이블 · 읽음 처리가 더 생김. 대안 C: 비용 저장 응답에 담기 → expense → budget 의존 · 순환 ✗ |
+| D5-4 ★ | 예산 항목이 있는 비용 분류를 지우면 | **추천 A: 삭제는 그대로 허용. budget은 지워진 비용 분류의 항목을 현황에서 빼고 미배정으로 돌림** | 지울 수 있는 건 누적 비용 0건뿐(P2-7)이라 그 항목의 소진은 늘 0. category · 기획서 2장을 바꾸지 않음. 대안 B: 예산 항목도 "쓰임"으로 세어 삭제 거부 → `CategoryUsage` 구현이 둘, 2장 "누적 비용 0건" 문구 · 삭제 버튼 조건 변경. 대안 C: category가 삭제 이벤트를 새로 냄(D2-6은 없음) → budget이 항목을 지움, 지난 달 기록이 바뀜 |
+| D5-5 ★ | Flyway 번호 | **추천 A: 지금은 `V6`로 쓰고, sales(`V5`)보다 먼저 머지되면 맞바꿈** | 먼저 머지되는 쪽이 작은 번호 (D4-13). 대안 B: `V6` 고정, budget PR은 sales 머지를 기다림 |
+| D5-6 | 매출과의 연결 | 없음 | 요구사항정의서 8.5 · 기획서 5장 모두 비용만. "목표 매출"(00_start 1.1)은 Phase 1 범위 밖 |
+| D5-7 | 지난 달 예산 복사 (선택) | 백엔드 API 없음. 프론트가 전 달 현황으로 입력란을 채우고 저장은 월 예산 설정 | 기획서 5.3 ⑥ "채움. 저장은 따로". 요구사항정의서 8.5 "생성"보다 기획서가 나중 |
+| D5-8 | 이벤트 이름 · 칸 | 요구사항정의서 7.3 그대로. 단 `BudgetExceeded`의 `limit` → `budget`. 총액이 넘으면 `categoryId` null | 기획서 0.6 "한도" 금지. 기획서 5.5가 총액 초과도 알림 |
+| D5-9 | 100% "넘음"의 기준 | 소진 ≥ 예산 (선에 닿으면 넘은 것) | 기획서 P5-4 "100% 이상 빨강"과 같게. 용어집 "100% 초과"와 표현이 다름 → 용어집 고칠지 kei 확인 |
+| D5-10 | 연월 칸 | `budget_month DATE` (그 달 1일) | `YEAR_MONTH`는 MySQL 예약어. 변환기(`@Convert`)를 쓰지 않으려고 `LocalDate`. Hibernate가 `YearMonth`를 바로 매핑하면 구현 때 그쪽으로 (테스트로 확인) |
+
+**D5-1 소진액**
+
+| 안 | 방법 | 좋은 점 | 나쁜 점 |
+|---|---|---|---|
+| **A (추천)** | 소진은 저장하지 않음. 현황 · 리스너가 `expense.totals`로 계산 | 원본이 하나라 어긋날 일 없음. 예산 전에 쌓인 비용이 바로 보임 (기획서 5.3). 재실행돼도 안전. 분류 이동(선택)도 자동 반영 | 현황마다 그 달 비용을 읽음 (한 달 150건 안쪽, P4-5). 리스너는 발행만 해서 "이벤트로 자기 데이터를 쌓는" 모습은 없음 |
+| B | budget이 상위별 소진 표를 두고 이벤트로 ±금액 (요구사항정의서 7.2 그림) | 이벤트 주도가 눈에 보임. 현황 조회가 가벼움 | 예산 없는 달도 쌓아야 기획서 5.3을 지킴 (8.5 "무시"와 충돌). 재실행되면 두 번 더해짐 → 처리한 이벤트 표 필요. budget보다 먼저 들어간 비용은 따로 채워 넣어야 함 |
+
+**D5-2 예산 항목**
+
+| 안 | 방법 | 좋은 점 | 나쁜 점 |
+|---|---|---|---|
+| **A (추천)** | `BudgetLine`을 `@Embeddable` 값으로, `@ElementCollection` | cascade 없이 월 예산 save 한 번에 함께 저장. 항목은 ID가 필요 없는 값 (덮어쓰기 = 통째로 바꿈) | 00_start 7.1 "사용" 목록에 하나 추가. 항목 테이블은 `id` · `created_at` 없음 (0.4 이름 규칙의 예외) |
+| B | `BudgetLine` 엔티티 + `@OneToMany(cascade = ALL, orphanRemoval = true)` | 00_start 7.1 "예산 항목(`@OneToMany`)" 그대로 | 00_start 7.1 "cascade는 Phase 1에서 다루지 않는다"를 깸. 항목에 쓰지 않는 ID가 생김 |
+| C | 항목을 따로 저장 (리포지토리 둘) | 연관 매핑 없음 | 월 예산 한 장이 애그리거트 둘로 쪼개짐. "save 한 번"이 깨짐 |
+
+- A를 고르면 00_start 7.1의 두 줄이 바뀐다: "사용"에 `@ElementCollection`(예산 항목) 추가, "모듈 내부 연관관계만 허용"에서 "예산 항목(`@OneToMany`)"을 뺌
+
+### 5.7 공개 API·이벤트·HTTP [참고]
+
+**공개 API: BudgetService**
+
+| 메서드 | 출력 | 누가 쓰나 |
+|---|---|---|
+| `set(storeId, yearMonth, total, lines)` | `BudgetStatus` | 컨트롤러 |
+| `status(storeId, yearMonth)` | `BudgetStatus` | 컨트롤러, report (6장) |
+
+- `BudgetStatus(yearMonth, budget, spent, remaining, ratePercent, level, unassigned, lines)`. 예산이 없으면 `budget` · `remaining` · `ratePercent` · `level` · `unassigned`가 null
+- `BudgetLineStatus(categoryId, name, active, budget, spent, remaining, ratePercent, level, lastMonthSpent)`. 항목이 없으면 `budget` 쪽 칸이 null. 금액은 long (D4-10과 같게)
+
+**다른 모듈에 더하는 공개 메서드** (같은 PR)
+
+| 모듈 | 메서드 | 출력 | 하는 일 |
+|---|---|---|---|
+| expense | `totals(storeId, from, to)` | `ExpenseTotals(total, byTop, byCategory)` | 기간 비용 합. `byTop`은 하위를 상위로 합산 (요구사항정의서 8.4 "기간·분류별 비용 합계", D4-11) |
+| category | `tops(storeId)` | `List<CategoryInfo>` | 상위 전부 (꺼진 것 포함), 만든 순서. 건수는 채우지 않음 (`tree`는 비용을 다 세서 무거움) |
+
+- 기간을 `from` · `to`로 받는 이유: report(주 · 월 · 연)도 같은 메서드를 쓸 수 있게. 모양이 더 필요하면 6장에서 늘린다
+
+**이벤트** (`BudgetEvents.java`, 레코드. Phase 1에는 받는 모듈 없음, 요구사항정의서 7.3)
+
+| 이벤트 | 내용 | 언제 |
+|---|---|---|
+| `MonthlyBudgetSet` | `storeId`, `yearMonth` | 설정 커밋 후. 바뀐 것 없으면 안 냄 |
+| `BudgetSpentUpdated` | `storeId`, `yearMonth`, `categoryId`(상위), `spent` | 비용 이벤트를 받았고 그 달 예산이 있을 때 |
+| `BudgetExceeded` | `storeId`, `yearMonth`, `categoryId`(총액이면 null), `spent`, `budget` | 100% 선을 아래 → 위로 넘을 때 (D5-8, D5-9) |
+
+**HTTP** (`/api/stores/{storeId}/budgets` 아래. 매장 접근 검사 1.2를 지남)
+
+| 메서드 | 경로 | 요청 | 응답 | 오류 코드 |
+|---|---|---|---|---|
+| GET | `/{yearMonth}` (`2026-11`) | — | 200 + BudgetStatus | `VALIDATION` (형식) |
+| PUT | `/{yearMonth}` | `{total, lines: [{categoryId, amount}]}` | 200 + BudgetStatus | `VALIDATION`, `BUDGET_CATEGORY_UNAVAILABLE` |
+
+- 새 오류 코드 `BUDGET_CATEGORY_UNAVAILABLE` (409): 항목의 비용 분류가 없음 · 하위 · 꺼진 상위(새 항목). 0.6 표에 더한다
+- 통합 테스트는 `@ApplicationModuleTest(mode = DIRECT_DEPENDENCIES)`로 진짜 expense · category까지 띄운다
+
+### 5.8 테이블·파일 [참고]
+
+`db/migration/budget/V6__create_budgets.sql` (★D5-5)
+
+```sql
+CREATE TABLE budget.monthly_budgets (
+  id            BIGINT         AUTO_INCREMENT PRIMARY KEY,
+  store_id      BIGINT         NOT NULL,
+  budget_month  DATE           NOT NULL,     -- 그 달 1일 (D5-10)
+  amount        DECIMAL(15,0)  NOT NULL,     -- 총액
+  created_at    DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_monthly_budgets_store_month (store_id, budget_month)   -- 연월당 하나
+) CHARACTER SET utf8mb4;
+
+CREATE TABLE budget.budget_lines (           -- 값 컬렉션 (★D5-2 A). id · created_at 없음
+  monthly_budget_id  BIGINT         NOT NULL,  -- 같은 모듈이어도 FK 없음 (2.8과 같음)
+  category_id        BIGINT         NOT NULL,  -- category.categories.id (상위)
+  amount             DECIMAL(15,0)  NOT NULL,
+  PRIMARY KEY (monthly_budget_id, category_id)
+) CHARACTER SET utf8mb4;
+```
+
+**다른 모듈에서 바뀌는 것** (같은 PR)
+
+| 파일 | 변경 |
+|---|---|
+| `moa/expense/ExpenseService.java` · `ExpenseTotals.java` | `totals` (4.7의 `totals(...)` 자리, D4-11) + 테스트 |
+| `moa/category/CategoryService.java` | `tops` + 테스트 |
+| `moa/shared/ErrorCode.java` | `BUDGET_CATEGORY_UNAVAILABLE` (409) |
+| `moa/shared/Money.java` | 바뀌지 않음 |
+
+- 구현 때 확인: `total` 필드의 `Money` 칸 이름이 `amount`로 잡히는지 (`validate`가 알려 줌). 다르면 `@AttributeOverride`, 그때는 `columnDefinition`도 다시 적는다
+
+---
 
 ## 6. report 모듈 (예정, 4주차)
