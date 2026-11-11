@@ -556,6 +556,62 @@ class CategoryServiceTest {
         assertThat(categoryService.isActive(2L, beans.id())).as("다른 매장").isFalse();
     }
 
+    // expense가 비용 등록·재분류 때 부른다 (04 설계 4.7, D4-3)
+    @Test
+    @DisplayName("분류 선택 가능 확인 - 켜진 하위 · 하위 없는 상위 → true")
+    void isSelectable() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+
+        assertThat(categoryService.isSelectable(STORE_ID, beans.id())).isTrue();
+        assertThat(categoryService.isSelectable(STORE_ID, rent.id())).isTrue();
+    }
+
+    @Test
+    @DisplayName("분류 선택 가능 확인 - 하위 있는 상위 · 꺼진 것 · 없는 것 → false")
+    void notSelectable() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo milk = categoryService.add(STORE_ID, food.id(), "유제품");
+        categoryService.deactivate(STORE_ID, milk.id());
+
+        assertThat(categoryService.isSelectable(STORE_ID, food.id())).as("하위 있는 상위").isFalse();
+        assertThat(categoryService.isSelectable(STORE_ID, milk.id())).as("꺼진 하위").isFalse();
+        assertThat(categoryService.isSelectable(STORE_ID, 999L)).as("없는 분류").isFalse();
+        assertThat(categoryService.isSelectable(2L, beans.id())).as("다른 매장").isFalse();
+    }
+
+    // 꺼진 하위도 하위다. 고를 수 있게 하면 하위를 다시 켰을 때 상위 직접 입력분이 섞인다 (04 설계 D4-4)
+    @Test
+    @DisplayName("분류 선택 가능 확인 - 하위가 전부 꺼진 상위 → false")
+    void topWithAllChildrenOffNotSelectable() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo milk = categoryService.add(STORE_ID, food.id(), "유제품");
+        categoryService.deactivate(STORE_ID, beans.id());
+        categoryService.deactivate(STORE_ID, milk.id());
+
+        assertThat(categoryService.isSelectable(STORE_ID, food.id())).isFalse();
+    }
+
+    // expense가 비용 목록의 비용 분류 필터에 쓴다 (04 설계 4.2 "비용 목록 조회", 4.7)
+    @Test
+    @DisplayName("분류와 하위 ID - 상위 → 자신과 하위 전부(꺼진 것 포함), 하위 → 자신, 없는 ID → 빈 집합")
+    void idsWithChildren() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        CategoryInfo beans = categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo milk = categoryService.add(STORE_ID, food.id(), "유제품");
+        categoryService.deactivate(STORE_ID, milk.id());
+        categoryService.add(STORE_ID, null, "임대료");
+
+        assertThat(categoryService.idsWithChildren(STORE_ID, food.id()))
+                .containsExactlyInAnyOrder(food.id(), beans.id(), milk.id());
+        assertThat(categoryService.idsWithChildren(STORE_ID, beans.id())).containsExactly(beans.id());
+        assertThat(categoryService.idsWithChildren(STORE_ID, 999L)).isEmpty();
+        assertThat(categoryService.idsWithChildren(2L, food.id())).as("다른 매장").isEmpty();
+    }
+
     // expense(비용 목록의 분류 경로)와 report(분류별 집계 이름)가 쓴다 (04 설계 2.7)
     @Test
     @DisplayName("분류 정보 - 요청한 ID의 경로, 건수는 0, 없는 ID는 빠짐")
@@ -584,7 +640,7 @@ class CategoryServiceTest {
                 .isInstanceOfSatisfying(MoaException.class, e -> assertThat(e.getCode()).isEqualTo(code));
     }
 
-    // 비용 건수는 가짜가 대신 답한다. main의 NoExpenseYet보다 먼저 쓰이게 @Primary
+    // 비용 건수는 가짜가 대신 답한다. category만 띄워 expense의 구현은 없지만, 함께 뜨더라도 가짜가 쓰이게 @Primary
     @TestConfiguration(proxyBeanMethods = false)
     static class Fakes {
 

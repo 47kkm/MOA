@@ -1,0 +1,314 @@
+package moa.expense;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
+
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.ZoneId;
+
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.modulith.test.ApplicationModuleTest;
+import org.springframework.modulith.test.ApplicationModuleTest.BootstrapMode;
+import org.springframework.modulith.test.AssertablePublishedEvents;
+
+import moa.TestcontainersConfiguration;
+import moa.category.CategoryInfo;
+import moa.category.CategoryService;
+import moa.expense.ExpenseEvents.ExpenseDeleted;
+import moa.expense.ExpenseEvents.ExpenseReclassified;
+import moa.expense.ExpenseEvents.ExpenseRegistered;
+import moa.expense.ExpenseEvents.ExpenseSnapshot;
+import moa.expense.ExpenseEvents.ExpenseUpdated;
+import moa.shared.ErrorCode;
+import moa.shared.MoaException;
+
+/**
+ * expense 모듈과 그 의존(category)까지 띄우고 진짜 MySQL(Testcontainers)에 저장해 보는 통합 테스트 (04 설계 0.7, 4.7).
+ * category 쪽 가짜는 만들지 않는다. 비용 분류는 진짜 CategoryService로 만든다.
+ */
+@ApplicationModuleTest(mode = BootstrapMode.DIRECT_DEPENDENCIES)
+@Import({ TestcontainersConfiguration.class, ExpenseServiceTest.FixedClock.class })
+class ExpenseServiceTest {
+
+    static final Long STORE_ID = 1L;
+    static final LocalDate TODAY = LocalDate.of(2026, 10, 28);
+
+    @Autowired
+    ExpenseService expenseService;
+
+    @Autowired
+    CategoryService categoryService;
+
+    @Autowired
+    JdbcTemplate jdbc;
+
+    // 식자재 > 원두 · 유제품, 임대료(하위 없음)
+    CategoryInfo food;
+    CategoryInfo beans;
+    CategoryInfo milk;
+    CategoryInfo rent;
+
+    @BeforeEach
+    void setUp() {
+        jdbc.update("DELETE FROM expense.expenses");
+        jdbc.update("DELETE FROM category.categories");
+        food = categoryService.add(STORE_ID, null, "식자재");
+        beans = categoryService.add(STORE_ID, food.id(), "원두");
+        milk = categoryService.add(STORE_ID, food.id(), "유제품");
+        rent = categoryService.add(STORE_ID, null, "임대료");
+    }
+
+    @Test
+    @DisplayName("비용 등록 - 저장되고 ExpenseRegistered 발행")
+    void registerSavesAndPublishes(AssertablePublishedEvents events) {
+        ExpenseInfo info = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, "원두 2kg");
+
+        assertThat(info).isEqualTo(new ExpenseInfo(info.id(), beans.id(), "식자재 > 원두", true, 35000L, TODAY, "원두 2kg"));
+        assertThat(jdbc.queryForObject("SELECT amount FROM expense.expenses", Long.class)).isEqualTo(35000L);
+        assertThat(events)
+                .contains(ExpenseRegistered.class)
+                .matching(ExpenseRegistered::expenseId, info.id());
+    }
+
+    // 고를 수 있는 비용 분류 = 있음 + 켜짐 + 하위가 있는 상위가 아님 (04 설계 4.3, D4-3)
+    @Test
+    @DisplayName("비용 등록 - 하위 있는 상위 · 꺼진 것 · 없는 것 → EXPENSE_CATEGORY_UNAVAILABLE")
+    void registerRejectsUnselectable() {
+        categoryService.deactivate(STORE_ID, milk.id());
+
+        assertFails(ErrorCode.EXPENSE_CATEGORY_UNAVAILABLE,
+                () -> expenseService.register(STORE_ID, food.id(), 1000L, TODAY, null));
+        assertFails(ErrorCode.EXPENSE_CATEGORY_UNAVAILABLE,
+                () -> expenseService.register(STORE_ID, milk.id(), 1000L, TODAY, null));
+        assertFails(ErrorCode.EXPENSE_CATEGORY_UNAVAILABLE,
+                () -> expenseService.register(STORE_ID, 999L, 1000L, TODAY, null));
+        assertThat(count()).isZero();
+    }
+
+    // 비용은 건별이라 중복 검사를 하지 않는다 (04 설계 4.3, 기획서 4.1)
+    @Test
+    @DisplayName("비용 등록 - 같은 내용 두 번 → 두 건 저장")
+    void registerSameTwice() {
+        ExpenseInfo first = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, "원두 2kg");
+        ExpenseInfo second = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, "원두 2kg");
+
+        assertThat(second.id()).isNotEqualTo(first.id());
+        assertThat(count()).isEqualTo(2);
+    }
+
+    // 이벤트에는 이전 · 이후의 날짜 · 금액 · 비용 분류를 전부 담는다. budget이 "이전을 빼고 이후를 더함" 하나로 끝낸다 (04 설계 D4-2)
+    @Test
+    @DisplayName("비용 수정 - 금액 · 날짜 · 메모 변경 → 저장, ExpenseUpdated에 이전 · 이후 값")
+    void updateSavesAndPublishes(AssertablePublishedEvents events) {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, "원두 2kg");
+
+        ExpenseInfo updated = expenseService.update(STORE_ID, registered.id(), beans.id(), 30000L, TODAY.minusDays(1),
+                "원두 2kg 할인");
+
+        assertThat(updated).isEqualTo(new ExpenseInfo(registered.id(), beans.id(), "식자재 > 원두", true, 30000L,
+                TODAY.minusDays(1), "원두 2kg 할인"));
+        assertThat(jdbc.queryForObject("SELECT amount FROM expense.expenses", Long.class)).isEqualTo(30000L);
+        assertThat(events)
+                .contains(ExpenseUpdated.class)
+                .matching(ExpenseUpdated::before, new ExpenseSnapshot(TODAY, 35000L, beans.id()))
+                .matching(ExpenseUpdated::after, new ExpenseSnapshot(TODAY.minusDays(1), 30000L, beans.id()));
+    }
+
+    // 저장 한 번 = 이벤트 하나. 비용 분류가 바뀌면 Reclassified만 나가고 Updated는 나가지 않는다 (04 설계 D4-2)
+    @Test
+    @DisplayName("비용 재분류 - 비용 분류와 금액을 함께 → ExpenseReclassified 하나")
+    void reclassifyPublishesOne(AssertablePublishedEvents events) {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+
+        ExpenseInfo updated = expenseService.update(STORE_ID, registered.id(), milk.id(), 12000L, TODAY, null);
+
+        assertThat(updated.categoryPath()).isEqualTo("식자재 > 유제품");
+        assertThat(events.ofType(ExpenseUpdated.class)).isEmpty();
+        assertThat(events.ofType(ExpenseReclassified.class)).hasSize(1);
+        assertThat(events)
+                .contains(ExpenseReclassified.class)
+                .matching(ExpenseReclassified::before, new ExpenseSnapshot(TODAY, 35000L, beans.id()))
+                .matching(ExpenseReclassified::after, new ExpenseSnapshot(TODAY, 12000L, milk.id()));
+    }
+
+    // 거부되면 트랜잭션이 통째로 되돌아가 함께 바꾼 금액도 저장되지 않는다 (04 설계 4.2)
+    @Test
+    @DisplayName("비용 재분류 - 꺼진 비용 분류로 → EXPENSE_CATEGORY_UNAVAILABLE, 값 그대로")
+    void reclassifyToInactiveRejected(AssertablePublishedEvents events) {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+        categoryService.deactivate(STORE_ID, milk.id());
+
+        assertFails(ErrorCode.EXPENSE_CATEGORY_UNAVAILABLE,
+                () -> expenseService.update(STORE_ID, registered.id(), milk.id(), 12000L, TODAY, null));
+
+        assertThat(jdbc.queryForMap("SELECT category_id, amount FROM expense.expenses"))
+                .containsEntry("category_id", beans.id())
+                .hasEntrySatisfying("amount", amount -> assertThat(((Number) amount).longValue()).isEqualTo(35000L));
+        assertThat(events.ofType(ExpenseReclassified.class)).isEmpty();
+    }
+
+    // 비용 분류가 그대로면 고를 수 있는지 검사하지 않는다 (04 설계 D4-6)
+    @Test
+    @DisplayName("비용 수정 - 꺼진 비용 분류 그대로 금액만 → 저장")
+    void updateKeepsInactiveCategory() {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+        categoryService.deactivate(STORE_ID, beans.id());
+
+        ExpenseInfo updated = expenseService.update(STORE_ID, registered.id(), beans.id(), 30000L, TODAY, null);
+
+        assertThat(updated.amount()).isEqualTo(30000L);
+        assertThat(updated.categoryActive()).isFalse();
+        assertThat(jdbc.queryForObject("SELECT amount FROM expense.expenses", Long.class)).isEqualTo(30000L);
+    }
+
+    // 메모 앞뒤 공백만 다른 것도 바뀐 것이 아니다. Expense.change가 다듬은 뒤 비교한다 (04 설계 4.3, D4-2)
+    @Test
+    @DisplayName("비용 수정 - 바뀐 것 없음 → 이벤트 없음")
+    void updateWithoutChangePublishesNothing(AssertablePublishedEvents events) {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, "원두 2kg");
+
+        expenseService.update(STORE_ID, registered.id(), beans.id(), 35000L, TODAY, " 원두 2kg ");
+
+        assertThat(events.ofType(ExpenseUpdated.class)).isEmpty();
+        assertThat(events.ofType(ExpenseReclassified.class)).isEmpty();
+    }
+
+    // 다른 매장의 비용은 없는 것과 같다 (04 설계 4.3)
+    @Test
+    @DisplayName("비용 수정 - 다른 매장의 비용 → NOT_FOUND")
+    void updateOtherStoreNotFound() {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+
+        assertFails(ErrorCode.NOT_FOUND,
+                () -> expenseService.update(2L, registered.id(), beans.id(), 30000L, TODAY, null));
+        assertFails(ErrorCode.NOT_FOUND,
+                () -> expenseService.update(STORE_ID, 999L, beans.id(), 30000L, TODAY, null));
+    }
+
+    @Test
+    @DisplayName("비용 삭제 - 지워지고 ExpenseDeleted 발행 (다른 매장의 비용 → NOT_FOUND)")
+    void deleteRemovesAndPublishes(AssertablePublishedEvents events) {
+        ExpenseInfo registered = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+
+        assertFails(ErrorCode.NOT_FOUND, () -> expenseService.delete(2L, registered.id()));
+        expenseService.delete(STORE_ID, registered.id());
+
+        assertThat(count()).isZero();
+        assertThat(events)
+                .contains(ExpenseDeleted.class)
+                .matching(e -> e.expenseId().equals(registered.id()) && e.amount() == 35000L
+                        && e.categoryId().equals(beans.id()) && e.date().equals(TODAY));
+    }
+
+    // 페이지 나누기 없음. 한 달 150건 안쪽 (04 설계 4.2, 기획서 P4-5)
+    @Test
+    @DisplayName("비용 목록 조회 - 그 달만, 날짜 역순 · 같은 날은 나중 입력이 위, 합계 · 건수")
+    void listMonth() {
+        ExpenseInfo first = expenseService.register(STORE_ID, beans.id(), 35000L, LocalDate.of(2026, 10, 5), null);
+        ExpenseInfo rentPaid = expenseService.register(STORE_ID, rent.id(), 1_000_000L, TODAY, null);
+        ExpenseInfo later = expenseService.register(STORE_ID, milk.id(), 12000L, LocalDate.of(2026, 10, 5), null);
+        expenseService.register(STORE_ID, beans.id(), 5000L, LocalDate.of(2026, 9, 30), null);
+
+        ExpenseList list = expenseService.list(STORE_ID, YearMonth.of(2026, 10), null);
+
+        assertThat(list.yearMonth()).isEqualTo(YearMonth.of(2026, 10));
+        assertThat(list.items()).extracting(ExpenseInfo::id).containsExactly(rentPaid.id(), later.id(), first.id());
+        assertThat(list.total()).isEqualTo(1_047_000L);
+        assertThat(list.count()).isEqualTo(3);
+    }
+
+    // 상위면 자신 + 하위 전부(꺼진 것 포함), 하위면 자신만, 없는 ID면 빈 목록. 합계 · 건수도 필터 기준 (04 설계 4.2)
+    @Test
+    @DisplayName("비용 목록 조회 - 상위 필터 → 하위 포함")
+    void listFilterIncludesChildren() {
+        ExpenseInfo bean = expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+        ExpenseInfo dairy = expenseService.register(STORE_ID, milk.id(), 12000L, TODAY, null);
+        expenseService.register(STORE_ID, rent.id(), 1_000_000L, TODAY, null);
+        categoryService.deactivate(STORE_ID, milk.id());
+        YearMonth october = YearMonth.of(2026, 10);
+
+        ExpenseList byTop = expenseService.list(STORE_ID, october, food.id());
+
+        assertThat(byTop.items()).extracting(ExpenseInfo::id).containsExactly(dairy.id(), bean.id());
+        assertThat(byTop.total()).isEqualTo(47000L);
+        assertThat(byTop.count()).isEqualTo(2);
+        assertThat(expenseService.list(STORE_ID, october, beans.id()).items())
+                .extracting(ExpenseInfo::id).containsExactly(bean.id());
+        assertThat(expenseService.list(STORE_ID, october, 999L).items()).isEmpty();
+    }
+
+    // 화면이 categoryActive=false를 보고 "(꺼짐)"을 붙인다 (04 설계 4.2)
+    @Test
+    @DisplayName("비용 목록 조회 - 꺼진 비용 분류의 비용도 보임 (categoryActive false)")
+    void listShowsInactiveCategory() {
+        expenseService.register(STORE_ID, milk.id(), 12000L, TODAY, null);
+        categoryService.deactivate(STORE_ID, milk.id());
+
+        ExpenseList list = expenseService.list(STORE_ID, YearMonth.of(2026, 10), null);
+
+        assertThat(list.items()).singleElement()
+                .satisfies(item -> {
+                    assertThat(item.categoryPath()).isEqualTo("식자재 > 유제품");
+                    assertThat(item.categoryActive()).isFalse();
+                });
+    }
+
+    // category는 CategoryUsage 인터페이스만 안다. 구현은 expense에 있고, 여기서 진짜 비용으로 센다 (04 설계 0.3, 4.7)
+    @Test
+    @DisplayName("분류 삭제 - 비용이 있는 비용 분류 → CATEGORY_IN_USE (실제 비용으로)")
+    void deleteCategoryInUse() {
+        expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+
+        assertFails(ErrorCode.CATEGORY_IN_USE, () -> categoryService.delete(STORE_ID, beans.id()));
+        assertFails(ErrorCode.CATEGORY_IN_USE, () -> categoryService.delete(STORE_ID, food.id()));
+    }
+
+    // 비용 분류 화면의 "누적 비용 N건"도 같은 구현으로 센다. 다른 매장의 비용은 세지 않는다 (04 설계 2.2 tree)
+    @Test
+    @DisplayName("분류 tree 조회 - 누적 비용 건수 (실제 비용으로)")
+    void treeCountsRealExpenses() {
+        expenseService.register(STORE_ID, beans.id(), 35000L, TODAY, null);
+        expenseService.register(STORE_ID, beans.id(), 30000L, TODAY, null);
+        expenseService.register(STORE_ID, milk.id(), 12000L, TODAY, null);
+        jdbc.update("""
+                INSERT INTO expense.expenses (store_id, category_id, amount, expense_date, classified_by, approved)
+                VALUES (2, ?, 5000, '2026-10-28', 'USER', 1)""", beans.id());
+
+        assertThat(categoryService.tree(STORE_ID, true))
+                .extracting(CategoryInfo::path, CategoryInfo::expenseCount)
+                .contains(tuple("식자재 > 원두", 2L), tuple("식자재 > 유제품", 1L), tuple("임대료", 0L));
+    }
+
+    private int count() {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM expense.expenses", Integer.class);
+    }
+
+    private static void assertFails(ErrorCode code, ThrowingCallable call) {
+        assertThatThrownBy(call)
+                .isInstanceOfSatisfying(MoaException.class, e -> assertThat(e.getCode()).isEqualTo(code));
+    }
+
+    // "오늘"을 2026-10-28로 고정한다 (04 설계 D0-6)
+    @TestConfiguration(proxyBeanMethods = false)
+    static class FixedClock {
+
+        @Bean
+        @Primary
+        Clock fixedClock() {
+            ZoneId seoul = ZoneId.of("Asia/Seoul");
+            return Clock.fixed(TODAY.atStartOfDay(seoul).toInstant(), seoul);
+        }
+    }
+}

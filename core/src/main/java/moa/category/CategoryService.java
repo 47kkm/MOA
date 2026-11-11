@@ -4,8 +4,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -30,7 +32,7 @@ public class CategoryService {
     private final CategoryUsage usage;
     private final ApplicationEventPublisher events;
 
-    // usage는 인터페이스만 안다. 실제로 무엇이 들어오는지(지금은 NoExpenseYet, 3주차부터 expense의 구현)는 Spring이 정한다
+    // usage는 인터페이스만 안다. 실제로 무엇이 들어오는지(expense의 CategoryUsageImpl, 테스트에서는 가짜)는 Spring이 정한다
     public CategoryService(CategoryRepository categories, CategoryUsage usage, ApplicationEventPublisher events) {
         this.categories = categories;
         this.usage = usage;
@@ -151,6 +153,29 @@ public class CategoryService {
         return categories.findByIdAndStoreId(categoryId, storeId).map(Category::isActive).orElse(false);
     }
 
+    // expense가 비용 등록·재분류 때 부른다. 하위가 있는 상위는 고를 수 없고 하위 중 하나를 골라야 한다 (04 설계 4.7, D4-3)
+    // 하위는 꺼진 것도 센다. 하위가 전부 꺼진 상위도 고를 수 없다 (04 설계 D4-4)
+    @Transactional(readOnly = true)
+    public boolean isSelectable(Long storeId, Long categoryId) {
+        return categories.findByIdAndStoreId(categoryId, storeId)
+                .map(c -> c.isActive() && !hasChildren(c))
+                .orElse(false);
+    }
+
+    // expense가 비용 목록의 비용 분류 필터에 쓴다. 꺼진 것도 넣는다 (04 설계 4.2 "비용 목록 조회", 4.7)
+    // tree를 쓰지 않는 이유: tree는 누적 건수를 세느라 매장의 비용 전부를 다시 읽는다
+    @Transactional(readOnly = true)
+    public Set<Long> idsWithChildren(Long storeId, Long categoryId) {
+        Set<Long> ids = new HashSet<>();
+        categories.findByIdAndStoreId(categoryId, storeId).ifPresent(category -> {
+            ids.add(category.getId());
+            if (category.isTop()) {
+                categories.findByStoreIdAndParentId(storeId, category.getId()).forEach(child -> ids.add(child.getId()));
+            }
+        });
+        return ids;
+    }
+
     // expense(비용 목록의 분류 경로)와 report(분류별 집계 이름)가 쓴다. 건수는 채우지 않는다 (04 설계 2.7)
     @Transactional(readOnly = true)
     public Map<Long, CategoryInfo> infoOf(Long storeId, Collection<Long> categoryIds) {
@@ -186,6 +211,11 @@ public class CategoryService {
                 && categories.countByStoreIdAndParentIdIsNullAndActiveTrue(storeId) == 1) {
             throw new MoaException(ErrorCode.CATEGORY_LAST_ACTIVE, "at least one active top category is required");
         }
+    }
+
+    // 하위를 가질 수 있는 건 상위뿐이라 하위면 세지 않는다 (2단계). 꺼진 하위도 센다 (04 설계 D4-4)
+    private boolean hasChildren(Category category) {
+        return category.isTop() && categories.countByStoreIdAndParentId(category.getStoreId(), category.getId()) > 0;
     }
 
     private Category find(Long storeId, Long id) {
