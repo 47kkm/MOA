@@ -15,7 +15,7 @@ Phase 1 진행 중 (목표 11/30). 백엔드 모듈 6개 중 3개 완료.
 | store | 매장 등록 · 정보 수정 | 완료 |
 | category | 비용 분류 (상위 · 하위 2단 tree). 추가 · 이름 변경 · 켜기/끄기 · 삭제. 매장을 등록하면 기본 비용 분류를 만들어 줌 | 완료 |
 | expense | 비용 등록 · 수정 · 재분류 · 삭제 · 월 목록 | 완료 |
-| sales | 결제수단 · 일 매출 | 설계 · 구현 중 |
+| sales | 결제수단 · 일 매출 | 설계 중 |
 | budget · report | 예산 소진, 기간별 집계 | 예정 |
 | 프론트엔드 | 대시보드 · 입력 화면 | 예정 |
 
@@ -66,9 +66,9 @@ AI(Claude Code)를 페어로 두고 개발합니다.
 
 | 누가 | 무엇을 |
 |---|---|
-| kei | 기능 범위 · 규칙 · 설계 결정 (04 설계의 "확정 (kei)"), 모든 PR 검토와 머지 |
+| kei | 기능 범위 · 규칙 · 설계 결정 (04 설계의 "확정 (kei)"), PR 머지. 코드 리뷰 결과는 [05_verification](docs/05_verification.md)에 (expense는 리뷰 대기) |
 | Claude Code | 문서와 코드의 대부분. 정할 것이 생기면 추천안과 함께 kei에게 넘김 |
-| kei 직접 구현 | `Money` 값 객체 (TDD, PR #4), sales 모듈 (설계 요약 · 구현 진행 중) |
+| kei 직접 구현 | `Money` 값 객체 (TDD, PR #4), sales 모듈 (설계 요약 작성, 구현 예정) |
 
 - AI 산출물을 검토한 결과와 거기서 잡은 오류는 [05_verification](docs/05_verification.md)에 남깁니다.
 - 설계 문서는 다른 AI(Muse)에게도 교차 검토를 받았습니다 ([muse-feedback](docs/muse-feedback.md)).
