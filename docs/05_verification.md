@@ -132,8 +132,8 @@ sales는 kei가 설계 요약과 구현을 직접 하고 Claude가 리뷰한다.
 
 | PR | 질문 | 첫 답 | 정정 |
 |---|---|---|---|
-| #5 | 재분류 때 "고를 수 있는 비용 분류인가"(409)는 어느 파일 어느 메서드에서 검사? 금액 범위(400)처럼 `Expense` 안에 두지 않은 이유는? | (11/14 뒤) | |
-| #5 | 비용 분류를 지울 때 비용 건수는 어느 모듈 어느 클래스가 세나? category는 그 클래스를 import하지 않는데 어떻게 쓰나? | (11/14 뒤) | |
+| #5 | 재분류 때 "고를 수 있는 비용 분류인가"(409)는 어느 파일 어느 메서드에서 검사? 금액 범위(400)처럼 `Expense` 안에 두지 않은 이유는? | △ 위치는 "`ExpenseService`의 `register`" / 이유 ✓ "비용 분류 정보는 `Expense`가 아니라 category가 관리해서, expense 밖에서 조회하는 절차가 필요" | 재분류는 `update` → `rejectUnselectable` (등록의 `register`도 같은 메서드를 부름). 비용 분류가 바뀔 때만 검사 (D4-6) |
+| #5 | 비용 분류를 지울 때 비용 건수는 어느 모듈 어느 클래스가 세나? category는 그 클래스를 import하지 않는데 어떻게 쓰나? | △ "expense 모듈에서 센다. 의존 역전 같은데 설명 부탁" | 클래스는 `expense/internal/CategoryUsageImpl`. 인터페이스 `CategoryUsage`는 category가 정하고 expense가 구현, Spring이 `CategoryService` 생성자에 넣어 줌. 설명으로 보충 (11/15) |
 
 ### 3.4 AI 산출물에서 잡은 오류
 
