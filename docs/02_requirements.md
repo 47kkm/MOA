@@ -224,10 +224,10 @@
 | 비용 분류 | Category | 비용을 묶는 이름. 상위 > 하위 2단계 tree. 화면·문구에서는 "분류"만 쓰지 않고 반드시 "비용 분류"라고 쓴다 (업종·결제수단과 혼동 방지) | category |
 | 분류 경로 | CategoryPath | "식자재 > 유제품"처럼 상위부터 이어 쓴 표기 | category |
 | 월 예산 | MonthlyBudget | 특정 연월의 예산. 총액과 분류별 항목 | budget |
-| 예산 항목 | BudgetLine | 월 예산 안의 분류 하나와 그 한도 | budget |
+| 예산 항목 | BudgetLine | 월 예산 안의 분류 하나와 그 예산 | budget |
 | 소진액 | Spent | 해당 월·분류에 등록된 비용 합계 | budget |
 | 잔여 | Remaining | 예산 − 소진액 | budget |
-| 소진율 | SpentRate | 소진액 ÷ 예산. 100% 초과 = 예산 초과 | budget |
+| 소진율 | SpentRate | 소진액 ÷ 예산. 100% 이상 = 예산 초과 (선에 닿으면 넘은 것) | budget |
 | 순이익 | NetProfit | 매출 합계 − 비용 합계. 세금·감가 등 고려 없음 | report |
 | 집계 | Summary | 기간별 매출·비용·순이익·분류별 합계 숫자 | report |
 | 서술 | Narrative | 집계를 바탕으로 한 문장 설명. Phase 1은 비어 있음 | report |
@@ -256,7 +256,7 @@
 | 사장님 | 일 매출 기록 | 일 매출이 기록되었다 `DailySalesRecorded` | sales |
 | 사장님 | 비용 등록 | 비용이 등록되었다 `ExpenseRegistered` | expense |
 | 시스템 | (ExpenseRegistered 수신) 소진액 갱신 | 예산 소진액이 갱신되었다 `BudgetSpentUpdated` | budget |
-| 시스템 | (소진액 > 예산) | 예산이 초과되었다 `BudgetExceeded` | budget |
+| 시스템 | (소진액 ≥ 예산) | 예산이 초과되었다 `BudgetExceeded` | budget |
 | 사장님 | 대시보드 조회 | (읽기) | report |
 
 **S3. 이번 달 현황**
@@ -273,7 +273,7 @@
 | 사장님 | 비용 재분류 | 비용이 재분류되었다 `ExpenseReclassified` | expense |
 | 시스템 | (ExpenseReclassified 수신) 소진액 갱신 | `BudgetSpentUpdated` | budget |
 | 사장님 | 비용 수정 / 삭제 | `ExpenseUpdated` / `ExpenseDeleted` | expense |
-| 사장님 | 분류 추가 / 이름 변경 / 이동 / 비활성화 | `CategoryAdded` / `CategoryRenamed` / `CategoryMoved` / `CategoryDeactivated` | category |
+| 사장님 | 분류 추가 / 이름 변경 / 이동(선택) / 비활성화 | `CategoryAdded` / `CategoryRenamed` / `CategoryMoved`(이동을 만들 때) / `CategoryDeactivated` | category |
 
 **S5. 다음 달 예산**
 
@@ -333,7 +333,7 @@ report     → sales, expense, budget, category (조회 API 호출만)
   → expense: category에 "이 분류 있어?"           (API, 조회)
   → expense: 자기 스키마에 저장
   → expense: "비용 등록됨" 이벤트 발생              (이벤트)
-      → budget: 이벤트 보고 자기 스키마의 소진액 갱신, 넘었으면 "예산 초과" 이벤트 발생
+      → budget: 이벤트 보고 그 달 비용 합계로 소진액을 다시 계산 (저장하지 않음), 넘었으면 "예산 초과" 이벤트 발생
       → ai (Phase 2): 같은 이벤트 보고 메모로 분류 추천
 사장님이 대시보드를 열면
   → report: sales·expense·budget·category에 전화해 숫자를 받아 조립  (API, 조회)
@@ -384,7 +384,7 @@ void on(ExpenseRegistered e) {
 | ExpenseDeleted | expense | budget | expenseId, date, amount, categoryId |
 | MonthlyBudgetSet | budget | — | storeId, yearMonth |
 | BudgetSpentUpdated | budget | — | storeId, yearMonth, categoryId, spent |
-| BudgetExceeded | budget | — | storeId, yearMonth, categoryId, spent, limit |
+| BudgetExceeded | budget | — | storeId, yearMonth, categoryId, spent, budget |
 
 받아서 처리하는 모듈이 "—"인 이벤트는 Phase 1에서는 내기만 한다. Phase 2 ai 모듈과 이후 알림 기능의 연결점으로 남겨 둔다.
 
@@ -496,16 +496,16 @@ void on(ExpenseRegistered e) {
 | | | Given — / When 항목 합 5,500,000 > 총액 5,000,000 / Then 거부 |
 | | | Given 2026-11 예산 있음 / When 다시 설정 / Then 덮어쓰기 (월 예산은 연월당 1개) |
 | | | Given — / When 하위 분류 "유제품"에 항목 설정 / Then 거부 (예산 항목은 상위 분류 단위) |
-| 지난 달 예산 복사 | 선택 | Given 2026-10 예산 있음 / When 2026-11로 복사 / Then 같은 총액·항목으로 생성 |
+| 지난 달 예산 복사 | 선택 | Given 2026-10 예산 있음 / When 2026-11로 복사 / Then 입력란이 10월의 총액·항목으로 채워짐. 저장은 따로 |
 | 소진액 갱신 | 필수 | Given 11월 식자재 소진 0 / When ExpenseRegistered(11/3, 35,000, 유제품) 수신 / Then 식자재 소진 35,000 (하위는 상위로 합산), BudgetSpentUpdated 발행 |
 | | | Given 식자재 소진 35,000 / When ExpenseDeleted(그 비용) 수신 / Then 소진 0 |
 | | | Given — / When ExpenseReclassified(유제품 → 급여) 수신 / Then 식자재 −35,000, 인건비 +35,000 |
 | | | Given — / When ExpenseUpdated(날짜 11/3 → 10/30) 수신 / Then 11월 소진 −35,000, 10월 소진 +35,000 |
 | | | Given 11월 예산 없음 / When ExpenseRegistered 수신 / Then 무시 (오류 아님) |
-| 예산 초과 감지 | 필수 | Given 식자재 한도 2,000,000, 소진 1,990,000 / When 20,000 비용 등록 / Then 비용은 그대로 등록됨(예산은 비용 등록을 막지 않음), 소진 2,010,000, 잔여 −10,000, 소진율 100.5%, BudgetExceeded 발행 |
+| 예산 초과 감지 | 필수 | Given 식자재 예산 2,000,000, 소진 1,990,000 / When 20,000 비용 등록 / Then 비용은 그대로 등록됨(예산은 비용 등록을 막지 않음), 소진 2,010,000, 잔여 −10,000, 소진율 100.5%, BudgetExceeded 발행 |
 | | | Given 이미 초과 상태 / When 추가 비용 / Then BudgetExceeded 재발행 안 함 (초과 전환 시점 1회) |
-| 월 예산 현황 조회 | 필수 | Given 11월 예산·소진 있음 / When 조회 / Then 총액·총소진·잔여·소진율, 항목별 한도·소진·잔여·소진율 |
-| | | Given 식자재 소진이 한도를 130,000 넘음 / When 조회 / Then 잔여 −130,000, 소진율 100% 초과 값 그대로. 음수를 0으로 깎지 않는다 |
+| 월 예산 현황 조회 | 필수 | Given 11월 예산·소진 있음 / When 조회 / Then 총액·총소진·잔여·소진율, 항목별 예산·소진·잔여·소진율 |
+| | | Given 식자재 소진이 예산을 130,000 넘음 / When 조회 / Then 잔여 −130,000, 소진율 100% 초과 값 그대로. 음수를 0으로 깎지 않는다 |
 | 연간 예산 조회 | Phase 2 후보 | Given 2026년 예산 월별 / When 조회 / Then 1~12월 총액·소진 나열. 없는 월은 0 (2026-10-23 Phase 1에서 제외. 월 이동으로 충분) |
 
 ### 8.6 리포트 report
@@ -581,6 +581,7 @@ Phase 1 필수 기능 33개. 선택 기능 3개: 분류 이동, 분류 tree Mark
 | D10 | 순이익 별도 화면 | **확정 (2026-10-19)** 두지 않는다. 대시보드 추이 + 리포트 월별 순이익 추이로 대체 | 대시보드 집계, 월별 순이익 추이 |
 | D11 | 매출 목록에 미입력 날짜 표시 | **확정 (2026-10-19)** 기간 내 모든 날짜를 행으로, 미입력은 "미입력" 표시 | 일 매출 조회. 마감 빠뜨린 날을 바로 찾게 함 |
 | D12 | 예산 초과 시 처리 | **확정 (2026-10-19)** 비용 등록은 막지 않고 잔여를 음수로 표시 | 예산 초과 감지, 월 예산 현황 조회 |
+| D13 | 예산 문구 · 기준 정리 | **변경 (2026-11-16)** "한도" → "예산" (`BudgetExceeded`의 `limit` → `budget`). 100% 기준은 "이상". 지난 달 예산 복사는 입력란을 채우고 저장은 따로. budget은 소진액을 저장하지 않고 비용 합계로 계산 | 04 설계 5장(budget)에서 발견. 기획서 0.6 · P5-4 · 5.3, 04 D5-1 · D5-8과 맞춤 |
 
 ## 12. 다음 단계
 
