@@ -66,7 +66,7 @@ report ── 조회 ──▶ store · category · sales · expense · budget  
 | 2 | category | 구현됨 (PR #3) |
 | 3 | sales | 설계 요약 (kei, 2026-11-07). 구현은 11/14부터 |
 | 4 | expense | 구현됨 (PR #5, 2026-11-11) |
-| 5 | budget | Claude 초안 (2026-11-10). ★ 5개 kei 결정 대기 |
+| 5 | budget | kei 결정 끝 (2026-11-16, ★ 5개 전부 추천안). 구현 전 |
 | 6 | report | 예정 (4주차) |
 
 ## 용어
@@ -365,6 +365,7 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 | `CATEGORY_LAST_ACTIVE` | 409 | category | 마지막 켜진 상위를 끄거나 삭제 | 2.2 분류 비활성화 · 삭제 |
 | `CATEGORY_IN_USE` | 409 | category | 누적 비용 1건 이상인 분류를 삭제 (상위는 하위까지 합쳐) | 2.2 분류 삭제 |
 | `EXPENSE_CATEGORY_UNAVAILABLE` | 409 | expense | 고를 수 없는 비용 분류로 비용 등록·재분류 (없음 · 꺼짐 · 하위가 있는 상위). 기획서 4.5 "이 비용 분류는 쓸 수 없어요" (2026-11-06 초안) | 4.2 비용 등록 · 수정 |
+| `BUDGET_CATEGORY_UNAVAILABLE` | 409 | budget | 예산 항목의 비용 분류가 없음 · 하위 · 꺼진 상위(새 항목만. 그 달에 이미 있던 항목은 꺼져도 유지). 기획서 P5-7 (2026-11-16) | 5.2 월 예산 설정 |
 
 - 분류 이동(선택)의 두 거부(상위를 옮김, 하위 아래로 옮김)는 400 `VALIDATION`. 화면에서 나올 수 없는 요청이다 (2026-11-03, D2-15)
 - 각 장의 흐름 그림과 N.7 HTTP 표에도 코드를 그대로 적는다. 이 표는 "코드의 뜻", 각 장은 "어디서 나오나"
@@ -408,7 +409,7 @@ JSON ↔ 레코드            @Transactional               규칙은 여기
 
 | 값 객체 | 내용 | 규칙 |
 |---|---|---|
-| `Money` | `long amount` (원) | 음수 불가, 0은 허용. `plus`, `isZero`. 값이라 금액이 같으면 같다 (`equals`·`hashCode`). 바꾸지 않고 새로 만든다 (`plus`는 새 `Money`를 돌려줌). 9자리 상한은 없다 → 합계는 9자리를 넘을 수 있어서 SalesLine·Expense가 검사. `minus`는 4주차 budget에서 (결과 음수 허용은 그때 정함). JPA에서는 `@Embeddable`, 컬럼 `DECIMAL(15,0)`. 필드에 `@Column(columnDefinition = "DECIMAL(15,0)")` 필요 → 없으면 `validate`에서 앱이 뜨지 않음 (2026-11-06 확인, 2026-11-07 반영). kei 구현 PR #4 (2026-11-08) |
+| `Money` | `long amount` (원) | 음수 불가, 0은 허용. `plus`, `isZero`. 값이라 금액이 같으면 같다 (`equals`·`hashCode`). 바꾸지 않고 새로 만든다 (`plus`는 새 `Money`를 돌려줌). 9자리 상한은 없다 → 합계는 9자리를 넘을 수 있어서 SalesLine·Expense가 검사. `minus`는 만들지 않는다: budget 잔여는 음수가 될 수 있어서 `long` (5.4, 2026-11-16). JPA에서는 `@Embeddable`, 컬럼 `DECIMAL(15,0)`. 필드에 `@Column(columnDefinition = "DECIMAL(15,0)")` 필요 → 없으면 `validate`에서 앱이 뜨지 않음 (2026-11-06 확인, 2026-11-07 반영). kei 구현 PR #4 (2026-11-08) |
 
 - `YearMonth`와 `LocalDate`는 Java 표준을 그대로 쓴다
 - ID는 `Long`. StoreId 같은 래퍼는 두지 않는다 → 왜: 토이 규모에서 얻는 것보다 JPA 매핑 부담이 큼
@@ -1038,8 +1039,11 @@ CategoryService.move
 | `activate(storeId, id)` | | `CategoryInfo` | 컨트롤러 |
 | `delete(storeId, id)` | | — | 컨트롤러 |
 | `move(storeId, id, newParentId)` (선택) | | `CategoryInfo` | 컨트롤러 |
-| `isActive(storeId, categoryId)` | | boolean (없으면 false) | **expense** (비용 등록·재분류 때 "분류 존재 확인") |
-| `infoOf(storeId, categoryIds)` | Long, Collection<Long> | `Map<Long, CategoryInfo>` | **expense**(목록의 분류 경로), **report**(분류별 집계 이름) |
+| `isActive(storeId, categoryId)` | | boolean (없으면 false) | 지금은 아무도 안 씀 (expense는 `isSelectable`로 바꿈). report가 안 쓰면 지움 (4.7) |
+| `isSelectable(storeId, categoryId)` | | boolean. 있음 + 켜짐 + 하위가 있는 상위가 아님 | **expense** (비용 등록·재분류, D4-3) |
+| `idsWithChildren(storeId, categoryId)` | | `Set<Long>` 그 비용 분류 + 하위 (꺼진 것 포함) | **expense** (비용 목록의 비용 분류 필터) |
+| `infoOf(storeId, categoryIds)` | Long, Collection<Long> | `Map<Long, CategoryInfo>` | **expense**(목록의 분류 경로), **budget**(하위 → 상위), **report**(분류별 집계 이름) |
+| `tops(storeId)` | Long | `List<CategoryInfo>` 상위 전부 (꺼진 것 포함), 만든 순서. `expenseCount`는 0 | **budget** (예산 항목에 고를 수 있는 상위, 현황 행 순서 · 이름 · 꺼짐). 5.7, budget PR에서 구현 |
 | `exportMarkdown(storeId)` (선택) | | String | 컨트롤러 |
 
 - `CategoryInfo(id, parentId, name, path, active, sortOrder, expenseCount)` 레코드
@@ -1352,13 +1356,13 @@ CREATE TABLE sales.daily_sales_lines (
 expense ── isSelectable · idsWithChildren · infoOf ──▶ category   비용 등록·재분류 때 "고를 수 있는 비용 분류인가", 목록 필터와 경로
 expense ── CategoryUsage 구현 ──▶ category                         비용 분류 삭제 때 "누적 비용 몇 건" (0.3 역전)
 expense ── ExpenseRegistered · Updated · Reclassified · Deleted ──▶ budget   소진액 갱신 (4주차)
-report ── 조회 ──▶ expense                                         기간·분류별 비용 합계 (4주차, D4-11)
+report · budget ── totals ──▶ expense                              기간·분류별 비용 합계 (모양은 5.7, D4-11)
 ```
 
 | 기능 | 우선순위 | 화면 |
 |---|---|---|
 | 비용 등록 · 비용 수정 · 비용 재분류 · 비용 삭제 · 비용 목록 조회 | 필수 | 비용 |
-| 기간·분류별 비용 합계 | 필수 | 없음 (report·budget이 호출). 4주차 (D4-11) |
+| 기간·분류별 비용 합계 | 필수 | 없음 (report·budget이 호출). 모양은 5.7 `totals`, budget PR에서 구현 (D4-11) |
 | 저장하고 계속 | 선택 | 비용. 화면만의 기능이라 백엔드는 비용 등록 그대로 |
 
 - 받는 이벤트 없음 · 다른 모듈 호출은 category 조회만 · 스키마 `expense`
@@ -1481,7 +1485,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 | D4-8 | 누적 건수 세는 법 | 비용을 읽어 Java에서 셈 | GROUP BY는 JPQL 필요 → 최소 사용 규칙 밖. 1년 2천 건 안쪽. 4주차 MyBatis 판단 때 다시 |
 | D4-9 | 예산 알림(80%·100%) | expense 응답에 넣지 않음. 5장에서 | 넣으면 expense → budget 의존 → 순환 |
 | D4-10 | 요청·응답의 금액 | 숫자 하나 (`"amount": 35000`) | 프론트가 객체를 풀 필요 없음 |
-| D4-11 | 기간·분류별 비용 합계를 만드는 때 | **확정 (kei, 2026-11-07)** 4주차 report·budget 설계와 함께 | 모양이 받는 쪽에 달림. 지금 만들면 고칠 가능성이 큼 |
+| D4-11 | 기간·분류별 비용 합계를 만드는 때 | **확정 (kei, 2026-11-07)** 4주차 report·budget 설계와 함께 → 5.7 `totals(storeId, from, to)`로 정함 (2026-11-16) | 모양이 받는 쪽에 달림. 지금 만들면 고칠 가능성이 큼 |
 | D4-12 | `Money`를 누가 먼저 쓰나 | **확정 (kei, 2026-11-07)** 아래 표의 A | 위치(`moa.shared`)는 0.8에서 정해짐. sales와 expense가 둘 다 11/08 시작 |
 | D4-13 | Flyway 번호 | **바꿈 (kei, 2026-11-10)** expense `V4`, sales `V5` (처음엔 sales `V4`, expense `V5`) | 큰 번호가 먼저 적용된 DB는 작은 번호를 거부하므로, 먼저 머지되는 쪽이 작은 번호. sales가 11/14 뒤로 밀려 expense가 먼저 |
 | D4-14 | expense PR에서 kei가 할 것 | **확정 (kei, 2026-11-07)** 조각 없음, 질문 2개만 | 6.1의 조각은 AI가 짜는 1·2·4주차 규칙. 3주차는 sales 전체가 kei 손 |
@@ -1508,10 +1512,10 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 | `update(storeId, id, categoryId, amount, date, memo)` | `ExpenseInfo` | 컨트롤러 |
 | `delete(storeId, id)` | — | 컨트롤러 |
 | `list(storeId, yearMonth, categoryId)` | `ExpenseList(yearMonth, total, count, items)` | 컨트롤러 |
-| `totals(...)` | 4주차 (D4-11) | report, budget |
+| `totals(storeId, from, to)` | `ExpenseTotals` (5.7). budget PR에서 구현 (D4-11) | report, budget |
 
 - `ExpenseInfo(id, categoryId, categoryPath, categoryActive, amount, date, memo)` 레코드. `amount`는 long (D4-10)
-- `CategoryUsage` 구현은 `internal/CategoryUsageImpl` (`@Component`). 들어오면 `NoExpenseYet`를 지운다. 둘 다 있으면 빈이 둘이라 앱이 뜨지 않아 잊을 수 없다
+- `CategoryUsage` 구현은 `internal/CategoryUsageImpl` (`@Component`). `NoExpenseYet`는 PR #5에서 지웠다
 
 **category에 더하는 공개 메서드** (D4-3)
 
@@ -1580,14 +1584,14 @@ CREATE TABLE expense.expenses (
 
 ## 5. budget 모듈
 
-- 상태: **Claude 초안 2026-11-10. kei ★ 결정 대기 (주말 리뷰). 구현은 결정 뒤**
-- kei가 정할 것 5개는 5.6에 ★로 표시하고 추천을 적었다. 정해지면 ★를 지우고 결론을 적는다
+- 상태: **kei 결정 끝** (Claude 초안 2026-11-10, ★ 5개 2026-11-16 전부 추천안). 구현 전
+- kei가 정할 것 5개는 5.6에 ★로 표시하고 추천을 적었다. 정해지면 ★를 지우고 결론을 적는다. 5개 모두 2026-11-16 결정 (전부 추천안)
 - report(6장)는 sales 매출이 있어야 하므로 sales 뒤에 설계한다. 이 장은 budget만 다룬다
 
 ### 5.1 한눈에 [검토]
 
 ```
-budget ── totals ──▶ expense                         소진 · 지난 달 실제 (그 달 비용 합, 상위별). 소진은 저장하지 않고 계산 (★D5-1)
+budget ── totals ──▶ expense                         소진 · 지난 달 실제 (그 달 비용 합, 상위별). 소진은 저장하지 않고 계산 (D5-1)
 budget ── tops · infoOf ──▶ category                 예산 항목에 고를 수 있는 상위, 행 순서·이름·꺼짐, 하위 → 상위
 expense ── ExpenseRegistered · Updated · Reclassified · Deleted ──▶ budget   BudgetSpentUpdated · BudgetExceeded 발행
 report ── status ──▶ budget                          대시보드 예산 카드 · 리포트 예산 대비 (6장, sales 뒤)
@@ -1628,7 +1632,7 @@ BudgetService.status(storeId, yearMonth)
  ├ expense.totals(그 달)   → 상위별 소진(하위 포함) · 총소진
  ├ expense.totals(전 달)   → 지난 달 실제
  ├ category.tops(storeId)  → 행 순서 · 이름 · 꺼짐
- → 행: 켜진 상위 전부 + 항목이 있는 꺼진 상위 "(꺼짐)". 지워진 비용 분류의 항목은 뺌 (★D5-4)
+ → 행: 켜진 상위 전부 + 항목이 있는 꺼진 상위 "(꺼짐)". 지워진 비용 분류의 항목은 뺌 (D5-4)
  → 행마다 BudgetUsage(예산, 소진) → 잔여 · 소진율 · 구간
  → 200 BudgetStatus. 예산 없는 달도 200 (예산 칸만 null, 소진 · 지난 달 실제는 있음)
 ```
@@ -1643,7 +1647,7 @@ ExpenseRegistered / Updated / Reclassified / Deleted   (커밋 후 · 동기 · 
      expense.totals(그 달) → 지금 소진 (= 이후).  이전 = 이후 − 이번 변화
      → 바뀐 상위마다 BudgetSpentUpdated
      → 항목 · 총액이 100% 선을 아래 → 위로 넘었으면 BudgetExceeded
- → budget이 저장하는 것은 없다. 다시 실행돼도 숫자가 틀어지지 않는다 (★D5-1)
+ → budget이 저장하는 것은 없다. 다시 실행돼도 숫자가 틀어지지 않는다 (D5-1)
  → 단, 다시 실행되면 BudgetExceeded가 한 번 더 나갈 수 있다. Phase 1에는 받는 모듈이 없어 그대로 둔다
 ```
 
@@ -1667,7 +1671,7 @@ ExpenseRegistered / Updated / Reclassified / Deleted   (커밋 후 · 동기 · 
 | 월 예산 삭제 없음 | — | — | P5-6 |
 
 - 다른 매장의 예산은 매장 접근 검사(1.2)가 막는다. 다른 매장의 비용 분류 ID는 `tops`에 없으므로 409
-- 소진 · 잔여 · 소진율은 저장하지 않는다. 매번 expense에서 계산 (★D5-1)
+- 소진 · 잔여 · 소진율은 저장하지 않는다. 매번 expense에서 계산 (D5-1)
 
 ### 5.4 애그리거트: MonthlyBudget (월 예산 한 장) [검토]
 
@@ -1678,7 +1682,7 @@ ExpenseRegistered / Updated / Reclassified / Deleted   (커밋 후 · 동기 · 
 | `id` · `storeId` | Long | DB 생성 · ID 참조 |
 | `month` | LocalDate (그 달 1일). `yearMonth()`로 꺼냄 | 연월당 하나 (유니크) |
 | `total` | `Money` | 총액. 1 ~ 999,999,999 |
-| `lines` | `List<BudgetLine>` (값 컬렉션, ★D5-2) | 상위 비용 분류마다 0~1개. 합 ≤ 총액 |
+| `lines` | `List<BudgetLine>` (값 컬렉션, D5-2) | 상위 비용 분류마다 0~1개. 합 ≤ 총액 |
 
 | 값 | 필드 · 메서드 | 하는 일 |
 |---|---|---|
@@ -1693,7 +1697,7 @@ ExpenseRegistered / Updated / Reclassified / Deleted   (커밋 후 · 동기 · 
 | `lineOf(categoryId)` | 그 상위의 항목 (없으면 빈 값) |
 | `unassigned()` | 미배정 = 총액 − 항목 합 |
 
-- 소진은 애그리거트에 없다. 예산은 "얼마를 쓰기로 했나"만 안다 (★D5-1). `thisMonth`를 인자로 받는다 (`Clock`을 모름, `Expense`와 같음)
+- 소진은 애그리거트에 없다. 예산은 "얼마를 쓰기로 했나"만 안다 (D5-1). `thisMonth`를 인자로 받는다 (`Clock`을 모름, `Expense`와 같음)
 - 잔여는 `Money`가 아니라 `long`이다. 음수가 될 수 있어서. kei의 `Money`는 바꾸지 않고 `minus`도 더하지 않는다 (0.8의 "minus는 4주차"를 닫음)
 - 항목 수 상한은 따로 두지 않는다. 상위 비용 분류가 20개까지라 (2.3) 항목도 20개를 넘지 않는다
 
@@ -1713,27 +1717,27 @@ ExpenseRegistered / Updated / Reclassified / Deleted   (커밋 후 · 동기 · 
 | 통합 | 월 예산 설정 - 하위 · 없는 · 꺼진 상위 새 항목 → BUDGET_CATEGORY_UNAVAILABLE | 상위 · 켜짐 |
 | 통합 | 월 예산 설정 - 꺼진 상위의 기존 항목 → 금액 수정 허용 | P5-7 |
 | 통합 | 월 예산 설정 - 다시 설정 → 덮어쓰기 (예산은 하나), MonthlyBudgetSet | 연월당 하나 |
-| 통합 | 월 예산 현황 조회 - 예산 전에 쌓인 비용 → 설정 직후 소진에 포함 | ★D5-1 |
+| 통합 | 월 예산 현황 조회 - 예산 전에 쌓인 비용 → 설정 직후 소진에 포함 | D5-1 |
 | 통합 | 월 예산 현황 조회 - 유제품 35,000 · 원두 180,000 → 식자재 소진 215,000 | 하위 합산 |
 | 통합 | 월 예산 현황 조회 - 비용 재분류 · 날짜 변경 · 삭제 → 바로 반영 | 계산 방식 |
-| 통합 | 월 예산 현황 조회 - 지워진 비용 분류의 항목 → 행 없음, 미배정에 포함 | ★D5-4 |
+| 통합 | 월 예산 현황 조회 - 지워진 비용 분류의 항목 → 행 없음, 미배정에 포함 | D5-4 |
 | 통합 | 소진액 갱신 - 예산 없는 달의 비용 등록 → 이벤트 없음 | "무시" |
 | 통합 | 예산 초과 감지 - 1,990,000에 20,000 → BudgetExceeded, 이어서 5,000 → 없음 | 넘는 순간 한 번 |
 | 통합 | 예산 초과 감지 - 넘은 뒤 20,000 삭제 → 다시 20,000 등록 → BudgetExceeded | 다시 넘음 |
 | 통합 | 기간·분류별 비용 합계 - 상위별(하위 포함) · 하위별 · 전체 (expense) | `totals` |
 
-- 프론트 몫: 토스트(★D5-3), 입력란 비활성, 미배정 즉시 계산, 지난 달과 같게(D5-7), 소진율 색
+- 프론트 몫: 토스트(D5-3), 입력란 비활성, 미배정 즉시 계산, 지난 달과 같게(D5-7), 소진율 색
 - 경계 "expense · category는 budget을 모름"은 `ModularityTest`가 맡는다
 
 ### 5.6 결정 사항 [검토]
 
 | # | 결정 | 결론 | 이유 |
 |---|---|---|---|
-| D5-1 ★ | 소진액을 어디서 얻나 | **추천 A: 저장하지 않고 expense에서 계산** (`totals`). 리스너는 이벤트 발행만 | 아래 표 |
-| D5-2 ★ | 예산 항목 매핑 | **추천 A: `@ElementCollection` 값 컬렉션** | 아래 표 |
-| D5-3 ★ | 80% · 100% 알림을 누가 판단하나 (D4-9, 기획서 P5-5) | **추천 A: 구간은 서버(`BudgetUsage`)가 정하고, 넘었는지는 프론트가 비교.** 저장 전 현황 → 비용 저장 → 현황 다시 조회 → 그 상위(항목이 없으면 총액)의 구간이 올라갔으면 토스트 (주의 = 80%, 초과 = 100%) | 선 규칙은 도메인에 하나. 리스너가 동기라 저장 직후 조회가 맞음. 대안 B: budget이 "넘은 선"을 저장하고 프론트가 읽으면 지움 → 테이블 · 읽음 처리가 더 생김. 대안 C: 비용 저장 응답에 담기 → expense → budget 의존 · 순환 ✗ |
-| D5-4 ★ | 예산 항목이 있는 비용 분류를 지우면 | **추천 A: 삭제는 그대로 허용. budget은 지워진 비용 분류의 항목을 현황에서 빼고 미배정으로 돌림** | 지울 수 있는 건 누적 비용 0건뿐(P2-7)이라 그 항목의 소진은 늘 0. category · 기획서 2장을 바꾸지 않음. 대안 B: 예산 항목도 "쓰임"으로 세어 삭제 거부 → `CategoryUsage` 구현이 둘, 2장 "누적 비용 0건" 문구 · 삭제 버튼 조건 변경. 대안 C: category가 삭제 이벤트를 새로 냄(D2-6은 없음) → budget이 항목을 지움, 지난 달 기록이 바뀜 |
-| D5-5 ★ | Flyway 번호 | **추천 A: 지금은 `V6`로 쓰고, sales(`V5`)보다 먼저 머지되면 맞바꿈** | 먼저 머지되는 쪽이 작은 번호 (D4-13). 대안 B: `V6` 고정, budget PR은 sales 머지를 기다림 |
+| D5-1 | 소진액을 어디서 얻나 | **확정 (kei, 2026-11-16)** A: 저장하지 않고 expense에서 계산 (`totals`). 리스너는 이벤트 발행만 | 아래 표 |
+| D5-2 | 예산 항목 매핑 | **확정 (kei, 2026-11-16)** A: `@ElementCollection` 값 컬렉션 | 아래 표 |
+| D5-3 | 80% · 100% 알림을 누가 판단하나 (D4-9, 기획서 P5-5) | **확정 (kei, 2026-11-16)** A: 구간은 서버(`BudgetUsage`)가 정하고, 넘었는지는 프론트가 비교. 저장 전 현황 → 비용 저장 → 현황 다시 조회 → 그 상위(항목이 없으면 총액)의 구간이 올라갔으면 토스트 (주의 = 80%, 초과 = 100%) | 선 규칙은 도메인에 하나. 리스너가 동기라 저장 직후 조회가 맞음. 대안 B: budget이 "넘은 선"을 저장하고 프론트가 읽으면 지움 → 테이블 · 읽음 처리가 더 생김. 대안 C: 비용 저장 응답에 담기 → expense → budget 의존 · 순환 ✗ |
+| D5-4 | 예산 항목이 있는 비용 분류를 지우면 | **확정 (kei, 2026-11-16)** A: 삭제는 그대로 허용. budget은 지워진 비용 분류의 항목을 현황에서 빼고 미배정으로 돌림 | 지울 수 있는 건 누적 비용 0건뿐(P2-7)이라 그 항목의 소진은 늘 0. category · 기획서 2장을 바꾸지 않음. 대안 B: 예산 항목도 "쓰임"으로 세어 삭제 거부 → `CategoryUsage` 구현이 둘, 2장 "누적 비용 0건" 문구 · 삭제 버튼 조건 변경. 대안 C: category가 삭제 이벤트를 새로 냄(D2-6은 없음) → budget이 항목을 지움, 지난 달 기록이 바뀜 |
+| D5-5 | Flyway 번호 | **확정 (kei, 2026-11-16)** A: 지금은 `V6`로 쓰고, sales(`V5`)보다 먼저 머지되면 맞바꿈 | 먼저 머지되는 쪽이 작은 번호 (D4-13). 대안 B: `V6` 고정, budget PR은 sales 머지를 기다림 |
 | D5-6 | 매출과의 연결 | 없음 | 요구사항정의서 8.5 · 기획서 5장 모두 비용만. "목표 매출"(00_start 1.1)은 Phase 1 범위 밖 |
 | D5-7 | 지난 달 예산 복사 (선택) | 백엔드 API 없음. 프론트가 전 달 현황으로 입력란을 채우고 저장은 월 예산 설정 | 기획서 5.3 ⑥ "채움. 저장은 따로". 요구사항정의서 8.5 "생성"보다 기획서가 나중 |
 | D5-8 | 이벤트 이름 · 칸 | 요구사항정의서 7.3 그대로. 단 `BudgetExceeded`의 `limit` → `budget`. 총액이 넘으면 `categoryId` null | 기획서 0.6 "한도" 금지. 기획서 5.5가 총액 초과도 알림 |
@@ -1744,18 +1748,18 @@ ExpenseRegistered / Updated / Reclassified / Deleted   (커밋 후 · 동기 · 
 
 | 안 | 방법 | 좋은 점 | 나쁜 점 |
 |---|---|---|---|
-| **A (추천)** | 소진은 저장하지 않음. 현황 · 리스너가 `expense.totals`로 계산 | 원본이 하나라 어긋날 일 없음. 예산 전에 쌓인 비용이 바로 보임 (기획서 5.3). 재실행돼도 안전. 분류 이동(선택)도 자동 반영 | 현황마다 그 달 비용을 읽음 (한 달 150건 안쪽, P4-5). 리스너는 발행만 해서 "이벤트로 자기 데이터를 쌓는" 모습은 없음 |
+| **A (kei 결정)** | 소진은 저장하지 않음. 현황 · 리스너가 `expense.totals`로 계산 | 원본이 하나라 어긋날 일 없음. 예산 전에 쌓인 비용이 바로 보임 (기획서 5.3). 재실행돼도 안전. 분류 이동(선택)도 자동 반영 | 현황마다 그 달 비용을 읽음 (한 달 150건 안쪽, P4-5). 리스너는 발행만 해서 "이벤트로 자기 데이터를 쌓는" 모습은 없음 |
 | B | budget이 상위별 소진 표를 두고 이벤트로 ±금액 (요구사항정의서 7.2 그림) | 이벤트 주도가 눈에 보임. 현황 조회가 가벼움 | 예산 없는 달도 쌓아야 기획서 5.3을 지킴 (8.5 "무시"와 충돌). 재실행되면 두 번 더해짐 → 처리한 이벤트 표 필요. budget보다 먼저 들어간 비용은 따로 채워 넣어야 함 |
 
 **D5-2 예산 항목**
 
 | 안 | 방법 | 좋은 점 | 나쁜 점 |
 |---|---|---|---|
-| **A (추천)** | `BudgetLine`을 `@Embeddable` 값으로, `@ElementCollection` | cascade 없이 월 예산 save 한 번에 함께 저장. 항목은 ID가 필요 없는 값 (덮어쓰기 = 통째로 바꿈) | 00_start 7.1 "사용" 목록에 하나 추가. 항목 테이블은 `id` · `created_at` 없음 (0.4 이름 규칙의 예외) |
+| **A (kei 결정)** | `BudgetLine`을 `@Embeddable` 값으로, `@ElementCollection` | cascade 없이 월 예산 save 한 번에 함께 저장. 항목은 ID가 필요 없는 값 (덮어쓰기 = 통째로 바꿈) | 00_start 7.1 "사용" 목록에 하나 추가. 항목 테이블은 `id` · `created_at` 없음 (0.4 이름 규칙의 예외) |
 | B | `BudgetLine` 엔티티 + `@OneToMany(cascade = ALL, orphanRemoval = true)` | 00_start 7.1 "예산 항목(`@OneToMany`)" 그대로 | 00_start 7.1 "cascade는 Phase 1에서 다루지 않는다"를 깸. 항목에 쓰지 않는 ID가 생김 |
 | C | 항목을 따로 저장 (리포지토리 둘) | 연관 매핑 없음 | 월 예산 한 장이 애그리거트 둘로 쪼개짐. "save 한 번"이 깨짐 |
 
-- A를 고르면 00_start 7.1의 두 줄이 바뀐다: "사용"에 `@ElementCollection`(예산 항목) 추가, "모듈 내부 연관관계만 허용"에서 "예산 항목(`@OneToMany`)"을 뺌
+- A라서 00_start 7.1의 두 줄을 바꿨다 (2026-11-16): "사용"에 `@ElementCollection`(매출 항목 · 예산 항목) 추가, "모듈 내부 연관관계만 허용"에서 "예산 항목(`@OneToMany`)"을 뺌
 
 ### 5.7 공개 API·이벤트·HTTP [참고]
 
@@ -1793,12 +1797,12 @@ ExpenseRegistered / Updated / Reclassified / Deleted   (커밋 후 · 동기 · 
 | GET | `/{yearMonth}` (`2026-11`) | — | 200 + BudgetStatus | `VALIDATION` (형식) |
 | PUT | `/{yearMonth}` | `{total, lines: [{categoryId, amount}]}` | 200 + BudgetStatus | `VALIDATION`, `BUDGET_CATEGORY_UNAVAILABLE` |
 
-- 새 오류 코드 `BUDGET_CATEGORY_UNAVAILABLE` (409): 항목의 비용 분류가 없음 · 하위 · 꺼진 상위(새 항목). 0.6 표에 더한다
+- 새 오류 코드 `BUDGET_CATEGORY_UNAVAILABLE` (409): 항목의 비용 분류가 없음 · 하위 · 꺼진 상위(새 항목). 0.6 표에 있음
 - 통합 테스트는 `@ApplicationModuleTest(mode = DIRECT_DEPENDENCIES)`로 진짜 expense · category까지 띄운다
 
 ### 5.8 테이블·파일 [참고]
 
-`db/migration/budget/V6__create_budgets.sql` (★D5-5)
+`db/migration/budget/V6__create_budgets.sql` (D5-5)
 
 ```sql
 CREATE TABLE budget.monthly_budgets (
@@ -1811,7 +1815,7 @@ CREATE TABLE budget.monthly_budgets (
   UNIQUE KEY uk_monthly_budgets_store_month (store_id, budget_month)   -- 연월당 하나
 ) CHARACTER SET utf8mb4;
 
-CREATE TABLE budget.budget_lines (           -- 값 컬렉션 (★D5-2 A). id · created_at 없음
+CREATE TABLE budget.budget_lines (           -- 값 컬렉션 (D5-2). id · created_at 없음
   monthly_budget_id  BIGINT         NOT NULL,  -- 같은 모듈이어도 FK 없음 (2.8과 같음)
   category_id        BIGINT         NOT NULL,  -- category.categories.id (상위)
   amount             DECIMAL(15,0)  NOT NULL,
