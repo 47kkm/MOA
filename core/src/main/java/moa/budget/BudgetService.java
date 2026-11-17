@@ -75,11 +75,12 @@ public class BudgetService {
     @Transactional(readOnly = true)
     public BudgetStatus status(Long storeId, YearMonth yearMonth) {
         Optional<MonthlyBudget> budget = budgets.findByStoreIdAndMonth(storeId, yearMonth.atDay(1));
-        // 그 달 비용 합. 상위별은 하위를 합산한 값 (expense.totals)
-        ExpenseTotals spent = expenses.totals(storeId, yearMonth.atDay(1), yearMonth.atEndOfMonth());
+        // 그 달 · 전 달 비용 합. 상위별은 하위를 합산한 값 (expense.totals)
+        ExpenseTotals spent = totalsOf(storeId, yearMonth);
+        ExpenseTotals lastMonth = totalsOf(storeId, yearMonth.minusMonths(1));
         List<BudgetLineStatus> lines = categories.tops(storeId).stream()
                 .map(top -> lineStatus(top, budget.flatMap(b -> b.lineOf(top.id())),
-                        spent.byTop().getOrDefault(top.id(), 0L)))
+                        spent.byTop().getOrDefault(top.id(), 0L), lastMonth.byTop().getOrDefault(top.id(), 0L)))
                 .toList();
         if (budget.isEmpty()) {
             return new BudgetStatus(yearMonth, null, spent.total(), null, null, null, null, lines);
@@ -108,13 +109,20 @@ public class BudgetService {
         return budget.getLines().stream().map(BudgetLine::getCategoryId).collect(Collectors.toSet());
     }
 
-    private static BudgetLineStatus lineStatus(CategoryInfo top, Optional<BudgetLine> line, long spent) {
+    private ExpenseTotals totalsOf(Long storeId, YearMonth yearMonth) {
+        return expenses.totals(storeId, yearMonth.atDay(1), yearMonth.atEndOfMonth());
+    }
+
+    // 항목이 없는 행은 예산 칸이 null. 소진 · 지난 달 실제는 항목과 상관없이 채운다 (04 설계 5.7)
+    private static BudgetLineStatus lineStatus(CategoryInfo top, Optional<BudgetLine> line, long spent,
+            long lastMonthSpent) {
         if (line.isEmpty()) {
-            return new BudgetLineStatus(top.id(), top.name(), top.active(), null, spent, null, null, null, 0);
+            return new BudgetLineStatus(top.id(), top.name(), top.active(), null, spent, null, null, null,
+                    lastMonthSpent);
         }
         Money amount = line.get().getAmount();
         BudgetUsage usage = BudgetUsage.of(amount, Money.create(spent));
         return new BudgetLineStatus(top.id(), top.name(), top.active(), amount.getAmount(), spent, usage.remaining(),
-                usage.ratePercent(), usage.level(), 0);
+                usage.ratePercent(), usage.level(), lastMonthSpent);
     }
 }
