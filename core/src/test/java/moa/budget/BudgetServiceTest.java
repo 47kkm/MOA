@@ -107,6 +107,25 @@ class BudgetServiceTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM budget.monthly_budgets", Integer.class)).isZero();
     }
 
+    // 월 예산은 연월당 하나. 다시 설정 = 덮어쓰기, 항목은 줄을 전부 갈아 끼운다 (04 설계 5.3, D5-2)
+    @Test
+    @DisplayName("월 예산 설정 - 다시 설정 → 덮어쓰기 (예산은 하나), MonthlyBudgetSet")
+    void setTwiceOverwrites(AssertablePublishedEvents events) {
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(food.id(), 2_000_000L)));
+
+        BudgetStatus status = budgetService.set(STORE_ID, THIS_MONTH, 4_000_000L,
+                List.of(new BudgetLineInput(rent.id(), 1_500_000L)));
+
+        assertThat(status.budget()).isEqualTo(4_000_000L);
+        assertThat(status.lines())
+                .extracting(BudgetLineStatus::categoryId, BudgetLineStatus::budget)
+                .containsExactly(tuple(food.id(), null), tuple(rent.id(), 1_500_000L));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM budget.monthly_budgets", Integer.class)).isOne();
+        assertThat(jdbc.queryForList("SELECT category_id FROM budget.budget_lines", Long.class))
+                .containsExactly(rent.id());
+        assertThat(events.ofType(MonthlyBudgetSet.class)).hasSize(2);
+    }
+
     private BudgetStatus setWithLine(Long categoryId) {
         return budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(categoryId, 1_000_000L)));
     }
