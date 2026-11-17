@@ -237,6 +237,21 @@ class BudgetServiceTest {
                 .containsExactly(tuple(food.id(), true, null), tuple(rent.id(), false, 1_000_000L));
     }
 
+    // 예산 항목이 있는 비용 분류도 지울 수 있다. 그 항목은 현황에서 빠지고 금액은 미배정으로 (04 설계 D5-4)
+    @Test
+    @DisplayName("월 예산 현황 조회 - 지워진 비용 분류의 항목 → 행 없음, 미배정에 포함")
+    void statusDropsLineOfDeletedCategory() {
+        CategoryInfo supplies = categoryService.add(STORE_ID, null, "소모품");
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L,
+                List.of(new BudgetLineInput(food.id(), 2_000_000L), new BudgetLineInput(supplies.id(), 300_000L)));
+        categoryService.delete(STORE_ID, supplies.id());
+
+        BudgetStatus status = budgetService.status(STORE_ID, THIS_MONTH);
+
+        assertThat(status.lines()).extracting(BudgetLineStatus::categoryId).containsExactly(food.id(), rent.id());
+        assertThat(status.unassigned()).isEqualTo(3_000_000L);
+    }
+
     private BudgetStatus setWithLine(Long categoryId) {
         return budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(categoryId, 1_000_000L)));
     }
