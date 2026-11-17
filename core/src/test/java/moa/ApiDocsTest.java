@@ -2,6 +2,7 @@ package moa;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import org.junit.jupiter.api.DisplayName;
@@ -30,5 +31,16 @@ class ApiDocsTest {
                 .andExpect(jsonPath("$.paths['/api/stores']").exists())
                 .andExpect(jsonPath("$.paths['/api/stores/{storeId}/categories']").exists())
                 .andExpect(jsonPath("$.paths['/api/stores/{storeId}/expenses']").exists());
+    }
+
+    // 브라우저로 여는 주소. springdoc이 화면 파일(/swagger-ui/index.html)로 보낸다
+    @Test
+    @DisplayName("API 문서 - /swagger-ui.html → Swagger 화면")
+    void swaggerUi() throws Exception {
+        mvc.perform(get("/swagger-ui.html"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/swagger-ui/index.html"));
+        mvc.perform(get("/swagger-ui/index.html"))
+                .andExpect(status().isOk());
     }
 }
