@@ -18,8 +18,11 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import moa.budget.BudgetEvents.BudgetSpentUpdated;
 import moa.category.CategoryInfo;
 import moa.category.CategoryService;
+import moa.expense.ExpenseEvents.ExpenseDeleted;
 import moa.expense.ExpenseEvents.ExpenseReclassified;
 import moa.expense.ExpenseEvents.ExpenseRegistered;
+import moa.expense.ExpenseEvents.ExpenseSnapshot;
+import moa.expense.ExpenseEvents.ExpenseUpdated;
 import moa.expense.ExpenseService;
 import moa.expense.ExpenseTotals;
 
@@ -47,13 +50,28 @@ class ExpenseChangedListener {
         handle(event.storeId(), List.of(new Change(event.date(), event.categoryId(), event.amount())));
     }
 
-    // 이전 값은 빼고 이후 값은 더한다 (04 설계 5.2, D4-2의 이전 · 이후 값)
+    // 수정 · 재분류는 이전 값을 빼고 이후 값을 더한다 (04 설계 5.2, D4-2의 이전 · 이후 값)
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void on(ExpenseUpdated event) {
+        handle(event.storeId(), beforeAndAfter(event.before(), event.after()));
+    }
+
     @TransactionalEventListener
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void on(ExpenseReclassified event) {
-        handle(event.storeId(), List.of(
-                new Change(event.before().date(), event.before().categoryId(), -event.before().amount()),
-                new Change(event.after().date(), event.after().categoryId(), event.after().amount())));
+        handle(event.storeId(), beforeAndAfter(event.before(), event.after()));
+    }
+
+    @TransactionalEventListener
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void on(ExpenseDeleted event) {
+        handle(event.storeId(), List.of(new Change(event.date(), event.categoryId(), -event.amount())));
+    }
+
+    private static List<Change> beforeAndAfter(ExpenseSnapshot before, ExpenseSnapshot after) {
+        return List.of(new Change(before.date(), before.categoryId(), -before.amount()),
+                new Change(after.date(), after.categoryId(), after.amount()));
     }
 
     // 비용 하나가 바꾼 것: 그 날짜의 달, 그 비용 분류, ±금액
