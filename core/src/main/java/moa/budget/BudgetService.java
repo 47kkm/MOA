@@ -44,26 +44,29 @@ public class BudgetService {
         this.events = events;
     }
 
-    // 입력 규칙(400)을 먼저 보고, 그다음 예산 항목에 쓸 수 있는 비용 분류인가(409)를 본다 (04 설계 5.2)
-    // 응답은 현황 조회와 같은 모양
-    @Transactional
     // 그 달 예산이 있으면 덮어쓰기(change), 없으면 새로 잡기(set). 월 예산은 연월당 하나 (04 설계 5.3)
+    // 입력 규칙(400)을 먼저 보고, 그다음 예산 항목에 쓸 수 있는 비용 분류인가(409)를 본다 (04 설계 5.2)
     // 덮어쓰기는 save를 부르지 않는다. 읽어 온 월 예산을 고치면 커밋 때 변경 감지가 UPDATE를 보낸다
-    // 거부되면 트랜잭션이 되돌아가 change도 저장되지 않는다
+    // 거부되면 트랜잭션이 되돌아가 change도 저장되지 않는다. 응답은 현황 조회와 같은 모양
+    @Transactional
     public BudgetStatus set(Long storeId, YearMonth yearMonth, Long total, List<BudgetLineInput> lines) {
         YearMonth thisMonth = YearMonth.now(clock);
         Optional<MonthlyBudget> existing = budgets.findByStoreIdAndMonth(storeId, yearMonth.atDay(1));
+        // 그 달에 이미 있던 항목은 꺼진 상위여도 유지 · 수정 가능 (기획서 P5-7) → change 전에 기억해 둔다
+        Set<Long> before = existing.map(BudgetService::categoryIds).orElse(Set.of());
+        MonthlyBudget budget;
         boolean changed;
         if (existing.isPresent()) {
-            Set<Long> before = categoryIds(existing.get());
+            budget = existing.get();
             // 바뀐 것이 없으면 change가 false를 돌려준다. 아무 일 없고 이벤트도 없다 (04 설계 5.2)
-            changed = existing.get().change(total, lines, thisMonth);
-            rejectUnavailable(storeId, existing.get(), before);
+            changed = budget.change(total, lines, thisMonth);
         } else {
-            MonthlyBudget budget = MonthlyBudget.set(storeId, yearMonth, total, lines, thisMonth);
-            rejectUnavailable(storeId, budget, Set.of());
-            budgets.save(budget);
+            budget = MonthlyBudget.set(storeId, yearMonth, total, lines, thisMonth);
             changed = true;
+        }
+        rejectUnavailable(storeId, budget, before);
+        if (existing.isEmpty()) {
+            budgets.save(budget);
         }
         if (changed) {
             events.publishEvent(new MonthlyBudgetSet(storeId, yearMonth));
@@ -82,9 +85,9 @@ public class BudgetService {
         // 행: 켜진 상위 전부 + 항목이 있는 꺼진 상위 (04 설계 5.2, 기획서 P5-7)
         // 지워진 비용 분류의 항목은 tops에 없어서 행이 생기지 않는다 (D5-4)
         List<BudgetLineStatus> lines = tops.stream()
-                .filter(top -> top.active() || budget.flatMap(b -> b.lineOf(top.id())).isPresent())
-                .map(top -> lineStatus(top, budget.flatMap(b -> b.lineOf(top.id())),
-                        spent.byTop().getOrDefault(top.id(), 0L), lastMonth.byTop().getOrDefault(top.id(), 0L)))
+                .filter(top -> top.active() || lineOf(budget, top).isPresent())
+                .map(top -> lineStatus(top, lineOf(budget, top), spent.byTop().getOrDefault(top.id(), 0L),
+                        lastMonth.byTop().getOrDefault(top.id(), 0L)))
                 .toList();
         if (budget.isEmpty()) {
             return new BudgetStatus(yearMonth, null, spent.total(), null, null, null, null, lines);
@@ -118,6 +121,10 @@ public class BudgetService {
                         "category is not available for a budget line: " + line.getCategoryId());
             }
         }
+    }
+
+    private static Optional<BudgetLine> lineOf(Optional<MonthlyBudget> budget, CategoryInfo top) {
+        return budget.flatMap(b -> b.lineOf(top.id()));
     }
 
     private static Set<Long> categoryIds(MonthlyBudget budget) {
