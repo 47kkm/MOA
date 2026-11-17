@@ -69,6 +69,20 @@ class MonthlyBudgetTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    // 고칠 수 있는 달은 이번 달 · 다음 달 (04 설계 5.3, 기획서 P5-1). 이번 달은 응용 서비스가 Clock으로 구해 넘긴다
+    @Test
+    @DisplayName("월 예산 설정 - 지난 달 · 두 달 뒤 → 거부 (이번 달 · 다음 달은 허용)")
+    void rejectsMonthOutOfRange() {
+        assertThat(inMonth(THIS_MONTH).yearMonth()).isEqualTo(THIS_MONTH);
+        assertThat(inMonth(THIS_MONTH.plusMonths(1)).yearMonth()).isEqualTo(YearMonth.of(2026, 12));
+        assertThatThrownBy(() -> inMonth(THIS_MONTH.minusMonths(1))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> inMonth(THIS_MONTH.plusMonths(2))).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private static MonthlyBudget inMonth(YearMonth yearMonth) {
+        return MonthlyBudget.set(STORE_ID, yearMonth, 1_000_000L, List.of(), THIS_MONTH);
+    }
+
     private static MonthlyBudget withTotal(Long total) {
         return MonthlyBudget.set(STORE_ID, THIS_MONTH, total, List.of(), THIS_MONTH);
     }
