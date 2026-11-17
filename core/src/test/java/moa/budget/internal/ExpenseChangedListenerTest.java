@@ -157,6 +157,34 @@ class ExpenseChangedListenerTest {
                 .containsExactly(new BudgetExceeded(STORE_ID, THIS_MONTH, food.id(), 2_010_000L, 2_000_000L));
     }
 
+    // 내려갔다 다시 넘으면 다시 알린다 (04 설계 5.3, 기획서 5.5)
+    @Test
+    @DisplayName("예산 초과 감지 - 넘은 뒤 20,000 삭제 → 다시 20,000 등록 → BudgetExceeded")
+    void exceededAgainAfterDropping(AssertablePublishedEvents events) {
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(food.id(), 2_000_000L)));
+        expenseService.register(STORE_ID, beans.id(), 1_990_000L, TODAY, null);
+        Long crossing = expenseService.register(STORE_ID, beans.id(), 20_000L, TODAY, null).id();
+
+        expenseService.delete(STORE_ID, crossing);
+        expenseService.register(STORE_ID, beans.id(), 20_000L, TODAY, null);
+
+        assertThat(events.ofType(BudgetExceeded.class)).hasSize(2);
+    }
+
+    // 총액 선도 같은 규칙. 총액이 넘으면 categoryId null (04 설계 D5-8, 기획서 5.5)
+    // 항목이 없는 상위의 비용도 총액에는 들어간다
+    @Test
+    @DisplayName("예산 초과 감지 - 총액 5,000,000을 넘으면 categoryId null")
+    void exceededTotal(AssertablePublishedEvents events) {
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(food.id(), 2_000_000L)));
+        expenseService.register(STORE_ID, rent.id(), 4_990_000L, TODAY, null);
+
+        expenseService.register(STORE_ID, rent.id(), 10_000L, TODAY, null);
+
+        assertThat(events.ofType(BudgetExceeded.class))
+                .containsExactly(new BudgetExceeded(STORE_ID, THIS_MONTH, null, 5_000_000L, 5_000_000L));
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     static class FixedClock {
 
