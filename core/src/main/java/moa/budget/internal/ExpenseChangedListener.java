@@ -110,6 +110,12 @@ class ExpenseChangedListener {
                 }
             });
         });
+        // 총액도 같은 규칙. 항목이 없는 상위의 비용도 총액에는 들어간다. 총액이면 categoryId null (D5-8)
+        long totalDelta = deltaByTop.values().stream().mapToLong(Long::longValue).sum();
+        if (totalDelta != 0 && crossedOver(budget.getTotal(), now.total() - totalDelta, now.total())) {
+            events.publishEvent(
+                    new BudgetExceeded(storeId, month, null, now.total(), budget.getTotal().getAmount()));
+        }
     }
 
     // 이전 = 지금 − 이번 변화. 이전엔 초과가 아니었고 지금 초과면 선을 넘은 것 (04 설계 5.3)
