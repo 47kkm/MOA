@@ -35,6 +35,15 @@ class BudgetUsageTest {
         assertThat(spent(1_999_000).level()).isEqualTo(BudgetLevel.WARNING);
     }
 
+    // 소진율은 상한이 없다 (기획서 0.3 "100% 초과는 그대로"). 예산이 작고 소진이 크면 int 범위를 넘는다 → long
+    @Test
+    @DisplayName("월 예산 현황 조회 - 예산 1 · 소진 999,999,999 → 소진율 99,999,999,900% (int를 넘어도 그대로)")
+    void rateBeyondInt() {
+        BudgetUsage usage = BudgetUsage.of(Money.create(1), Money.create(999_999_999));
+
+        assertThat(usage.ratePercent()).isEqualTo(99_999_999_900L);
+    }
+
     private static BudgetUsage spent(long spent) {
         return BudgetUsage.of(BUDGET, Money.create(spent));
     }
