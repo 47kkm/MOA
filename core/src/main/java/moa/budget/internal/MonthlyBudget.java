@@ -59,8 +59,23 @@ public class MonthlyBudget {
 
     public static MonthlyBudget set(Long storeId, YearMonth yearMonth, Long total, List<BudgetLineInput> lines,
             YearMonth thisMonth) {
-        return new MonthlyBudget(storeId, yearMonth, validAmount(total),
-                lines.stream().map(l -> BudgetLine.of(l.categoryId(), validAmount(l.amount()).getAmount())).toList());
+        Money validTotal = validAmount(total);
+        return new MonthlyBudget(storeId, yearMonth, validTotal, validLines(lines, validTotal));
+    }
+
+    // 항목 규칙: 금액은 총액과 같은 범위, 합 ≤ 총액 (같으면 허용). 차이는 미배정 (04 설계 5.3)
+    private static List<BudgetLine> validLines(List<BudgetLineInput> lines, Money total) {
+        List<BudgetLine> result = lines.stream()
+                .map(l -> BudgetLine.of(l.categoryId(), validAmount(l.amount()).getAmount()))
+                .toList();
+        if (sum(result) > total.getAmount()) {
+            throw new IllegalArgumentException("sum of lines must not exceed total");
+        }
+        return result;
+    }
+
+    private static long sum(List<BudgetLine> lines) {
+        return lines.stream().mapToLong(l -> l.getAmount().getAmount()).sum();
     }
 
     // 금액 규칙: 총액 · 항목 금액 모두 1 이상 999,999,999 이하 (04 설계 5.3). 상한은 입력 규칙이라 Money가 아닌 여기서 본다 (0.8)
@@ -78,8 +93,7 @@ public class MonthlyBudget {
 
     // 미배정 = 총액 − 항목 합 (04 설계 5.4)
     public Money unassigned() {
-        long assigned = lines.stream().mapToLong(l -> l.getAmount().getAmount()).sum();
-        return Money.create(total.getAmount() - assigned);
+        return Money.create(total.getAmount() - sum(lines));
     }
 
     public YearMonth yearMonth() {
