@@ -221,6 +221,22 @@ class BudgetServiceTest {
                 new BudgetLineStatus(rent.id(), "임대료", true, null, 0L, null, null, null, 1_000_000L))));
     }
 
+    // 행: 켜진 상위 전부 + 항목이 있는 꺼진 상위 "(꺼짐)" (04 설계 5.2, 기획서 P5-7)
+    @Test
+    @DisplayName("월 예산 현황 조회 - 꺼진 상위는 항목이 있을 때만 행 (active false)")
+    void statusRowsOfDeactivatedTops() {
+        CategoryInfo supplies = categoryService.add(STORE_ID, null, "소모품");
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(rent.id(), 1_000_000L)));
+        categoryService.deactivate(STORE_ID, rent.id());
+        categoryService.deactivate(STORE_ID, supplies.id());
+
+        BudgetStatus status = budgetService.status(STORE_ID, THIS_MONTH);
+
+        assertThat(status.lines())
+                .extracting(BudgetLineStatus::categoryId, BudgetLineStatus::active, BudgetLineStatus::budget)
+                .containsExactly(tuple(food.id(), true, null), tuple(rent.id(), false, 1_000_000L));
+    }
+
     private BudgetStatus setWithLine(Long categoryId) {
         return budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(categoryId, 1_000_000L)));
     }
