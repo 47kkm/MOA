@@ -128,6 +128,20 @@ class ExpenseChangedListenerTest {
                         new BudgetSpentUpdated(STORE_ID, THIS_MONTH, rent.id(), 0L));
     }
 
+    // "바뀐 상위마다" (04 설계 5.2): 같은 상위 안에서 옮기거나 메모만 고치면 그 상위의 소진은 그대로라 알리지 않는다
+    @Test
+    @DisplayName("소진액 갱신 - 같은 상위 안의 재분류 원두 → 유제품 · 메모만 수정 → 이벤트 없음")
+    void sameTopNoEvent(AssertablePublishedEvents events) {
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of());
+        Long id = expenseService.register(STORE_ID, beans.id(), 180_000L, TODAY, null).id();
+
+        expenseService.update(STORE_ID, id, milk.id(), 180_000L, TODAY, null);
+        expenseService.update(STORE_ID, id, milk.id(), 180_000L, TODAY, "우유 6팩");
+
+        assertThat(events.ofType(BudgetSpentUpdated.class))
+                .containsExactly(new BudgetSpentUpdated(STORE_ID, THIS_MONTH, food.id(), 180_000L));
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     static class FixedClock {
 
