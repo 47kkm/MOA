@@ -24,11 +24,14 @@ import moa.expense.ExpenseTotals;
 @Component
 class ExpenseChangedListener {
 
+    private final MonthlyBudgetRepository budgets;
     private final ExpenseService expenses;
     private final CategoryService categories;
     private final ApplicationEventPublisher events;
 
-    ExpenseChangedListener(ExpenseService expenses, CategoryService categories, ApplicationEventPublisher events) {
+    ExpenseChangedListener(MonthlyBudgetRepository budgets, ExpenseService expenses, CategoryService categories,
+            ApplicationEventPublisher events) {
+        this.budgets = budgets;
         this.expenses = expenses;
         this.categories = categories;
         this.events = events;
@@ -41,7 +44,11 @@ class ExpenseChangedListener {
     }
 
     // 바뀐 비용 분류를 상위로 올리고, 그 상위마다 지금 소진을 알린다
+    // 그 달 예산이 없으면 끝 (요구사항정의서 8.5 "무시")
     private void handle(Long storeId, YearMonth month, List<Long> categoryIds) {
+        if (budgets.findByStoreIdAndMonth(storeId, month.atDay(1)).isEmpty()) {
+            return;
+        }
         Map<Long, CategoryInfo> infos = categories.infoOf(storeId, categoryIds);
         ExpenseTotals now = expenses.totals(storeId, month.atDay(1), month.atEndOfMonth());
         Set<Long> tops = new LinkedHashSet<>();
