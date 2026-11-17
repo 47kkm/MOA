@@ -79,6 +79,21 @@ class MonthlyBudgetTest {
         assertThatThrownBy(() -> inMonth(THIS_MONTH.plusMonths(2))).isInstanceOf(IllegalArgumentException.class);
     }
 
+    // 요청 JSON에서 칸이 빠지면 null로 들어온다. 전부 400 VALIDATION. 항목은 선택이라 목록이 없으면 항목 0개 (04 설계 5.3)
+    @Test
+    @DisplayName("월 예산 설정 - 총액 · 항목의 비용 분류 · 항목 금액 없음 → 거부 (항목 목록이 없으면 항목 0개)")
+    void rejectsMissingFields() {
+        assertThat(MonthlyBudget.set(STORE_ID, THIS_MONTH, 1_000_000L, null, THIS_MONTH).getLines()).isEmpty();
+        assertThatThrownBy(() -> MonthlyBudget.set(STORE_ID, THIS_MONTH, null, List.of(), THIS_MONTH))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> MonthlyBudget.set(STORE_ID, THIS_MONTH, 1_000_000L,
+                List.of(new BudgetLineInput(null, 1000L)), THIS_MONTH))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> MonthlyBudget.set(STORE_ID, THIS_MONTH, 1_000_000L,
+                List.of(new BudgetLineInput(FOOD, null)), THIS_MONTH))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static MonthlyBudget inMonth(YearMonth yearMonth) {
         return MonthlyBudget.set(STORE_ID, yearMonth, 1_000_000L, List.of(), THIS_MONTH);
     }
