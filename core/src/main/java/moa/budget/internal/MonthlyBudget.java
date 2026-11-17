@@ -60,7 +60,15 @@ public class MonthlyBudget {
     public static MonthlyBudget set(Long storeId, YearMonth yearMonth, Long total, List<BudgetLineInput> lines,
             YearMonth thisMonth) {
         Money validTotal = validAmount(total);
-        return new MonthlyBudget(storeId, yearMonth, validTotal, validLines(lines, validTotal));
+        return new MonthlyBudget(storeId, validMonth(yearMonth, thisMonth), validTotal, validLines(lines, validTotal));
+    }
+
+    // 고칠 수 있는 달은 이번 달 · 다음 달 (04 설계 5.3, 기획서 P5-1). thisMonth는 응용 서비스가 Clock으로 구해 넘긴다
+    private static YearMonth validMonth(YearMonth yearMonth, YearMonth thisMonth) {
+        if (!yearMonth.equals(thisMonth) && !yearMonth.equals(thisMonth.plusMonths(1))) {
+            throw new IllegalArgumentException("only this month or next month can be set");
+        }
+        return yearMonth;
     }
 
     // 항목 규칙: 금액은 총액과 같은 범위, 한 비용 분류에 항목 하나, 합 ≤ 총액 (같으면 허용). 차이는 미배정 (04 설계 5.3)
