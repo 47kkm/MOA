@@ -46,10 +46,20 @@ public class BudgetService {
     // 입력 규칙(400)을 먼저 보고, 그다음 예산 항목에 쓸 수 있는 비용 분류인가(409)를 본다 (04 설계 5.2)
     // 응답은 현황 조회와 같은 모양
     @Transactional
+    // 그 달 예산이 있으면 덮어쓰기(change), 없으면 새로 잡기(set). 월 예산은 연월당 하나 (04 설계 5.3)
+    // 덮어쓰기는 save를 부르지 않는다. 읽어 온 월 예산을 고치면 커밋 때 변경 감지가 UPDATE를 보낸다
+    // 거부되면 트랜잭션이 되돌아가 change도 저장되지 않는다
     public BudgetStatus set(Long storeId, YearMonth yearMonth, Long total, List<BudgetLineInput> lines) {
-        MonthlyBudget budget = MonthlyBudget.set(storeId, yearMonth, total, lines, YearMonth.now(clock));
-        rejectUnavailable(storeId, budget);
-        budgets.save(budget);
+        YearMonth thisMonth = YearMonth.now(clock);
+        Optional<MonthlyBudget> existing = budgets.findByStoreIdAndMonth(storeId, yearMonth.atDay(1));
+        if (existing.isPresent()) {
+            existing.get().change(total, lines, thisMonth);
+            rejectUnavailable(storeId, existing.get());
+        } else {
+            MonthlyBudget budget = MonthlyBudget.set(storeId, yearMonth, total, lines, thisMonth);
+            rejectUnavailable(storeId, budget);
+            budgets.save(budget);
+        }
         events.publishEvent(new MonthlyBudgetSet(storeId, yearMonth));
         return status(storeId, yearMonth);
     }
