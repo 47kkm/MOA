@@ -94,6 +94,21 @@ class MonthlyBudgetTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    // 다시 설정 = 한 장을 통째로 덮어쓰기. 항목은 줄을 전부 갈아 끼운다 (04 설계 5.4, D5-2)
+    @Test
+    @DisplayName("월 예산 설정 - 다시 설정 → 총액 · 항목을 통째로 바꿈")
+    void changes() {
+        MonthlyBudget budget = MonthlyBudget.set(STORE_ID, THIS_MONTH, 5_000_000L,
+                List.of(new BudgetLineInput(FOOD, 2_000_000L), new BudgetLineInput(RENT, 1_500_000L)), THIS_MONTH);
+
+        boolean changed = budget.change(4_000_000L, List.of(new BudgetLineInput(FOOD, 2_500_000L)), THIS_MONTH);
+
+        assertThat(changed).isTrue();
+        assertThat(budget.getTotal()).isEqualTo(Money.create(4_000_000));
+        assertThat(budget.getLines()).containsExactly(BudgetLine.of(FOOD, 2_500_000L));
+        assertThat(budget.unassigned()).isEqualTo(Money.create(1_500_000));
+    }
+
     private static MonthlyBudget inMonth(YearMonth yearMonth) {
         return MonthlyBudget.set(STORE_ID, yearMonth, 1_000_000L, List.of(), THIS_MONTH);
     }
