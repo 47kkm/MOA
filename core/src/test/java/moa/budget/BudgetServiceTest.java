@@ -153,6 +153,59 @@ class BudgetServiceTest {
         assertThat(events.ofType(MonthlyBudgetSet.class)).hasSize(1);
     }
 
+    // 소진 = 그 달 비용 합, 하위는 상위로 (04 설계 5.3). 215,000 / 2,000,000 = 10.75% → 11%
+    @Test
+    @DisplayName("월 예산 현황 조회 - 유제품 35,000 · 원두 180,000 → 식자재 소진 215,000")
+    void statusSumsChildrenIntoTop() {
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(food.id(), 2_000_000L)));
+        expenseService.register(STORE_ID, milk.id(), 35_000L, LocalDate.of(2026, 11, 3), null);
+        expenseService.register(STORE_ID, beans.id(), 180_000L, LocalDate.of(2026, 11, 10), null);
+
+        BudgetStatus status = budgetService.status(STORE_ID, THIS_MONTH);
+
+        assertThat(status.spent()).isEqualTo(215_000L);
+        assertThat(status.lines())
+                .extracting(BudgetLineStatus::categoryId, BudgetLineStatus::spent, BudgetLineStatus::remaining,
+                        BudgetLineStatus::ratePercent, BudgetLineStatus::level)
+                .contains(tuple(food.id(), 215_000L, 1_785_000L, 11, BudgetLevel.NORMAL));
+    }
+
+    // 소진은 저장하지 않고 매번 expense에서 계산한다. 그래서 예산보다 먼저 들어간 비용도 바로 보인다 (04 설계 D5-1, 기획서 5.3)
+    @Test
+    @DisplayName("월 예산 현황 조회 - 예산 전에 쌓인 비용 → 설정 직후 소진에 포함")
+    void statusIncludesExpensesBeforeBudget() {
+        expenseService.register(STORE_ID, rent.id(), 1_000_000L, LocalDate.of(2026, 11, 2), null);
+
+        BudgetStatus status = budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L,
+                List.of(new BudgetLineInput(rent.id(), 1_000_000L)));
+
+        assertThat(status.spent()).isEqualTo(1_000_000L);
+        assertThat(status.lines())
+                .extracting(BudgetLineStatus::categoryId, BudgetLineStatus::spent, BudgetLineStatus::level)
+                .contains(tuple(rent.id(), 1_000_000L, BudgetLevel.OVER));
+    }
+
+    // 원두 → 임대료 재분류, 유제품 날짜를 지난 달로, 임대료 하나 삭제 → 다음 조회에 바로 반영 (04 설계 D5-1)
+    @Test
+    @DisplayName("월 예산 현황 조회 - 비용 재분류 · 날짜 변경 · 삭제 → 바로 반영")
+    void statusFollowsExpenseChanges() {
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L,
+                List.of(new BudgetLineInput(food.id(), 2_000_000L), new BudgetLineInput(rent.id(), 1_000_000L)));
+        Long beansExpense = expenseService.register(STORE_ID, beans.id(), 100_000L, TODAY, null).id();
+        Long milkExpense = expenseService.register(STORE_ID, milk.id(), 50_000L, TODAY, null).id();
+        Long rentExpense = expenseService.register(STORE_ID, rent.id(), 300_000L, TODAY, null).id();
+
+        expenseService.update(STORE_ID, beansExpense, rent.id(), 100_000L, TODAY, null);
+        expenseService.update(STORE_ID, milkExpense, milk.id(), 50_000L, LocalDate.of(2026, 10, 31), null);
+        expenseService.delete(STORE_ID, rentExpense);
+
+        BudgetStatus status = budgetService.status(STORE_ID, THIS_MONTH);
+        assertThat(status.spent()).isEqualTo(100_000L);
+        assertThat(status.lines())
+                .extracting(BudgetLineStatus::categoryId, BudgetLineStatus::spent)
+                .containsExactly(tuple(food.id(), 0L), tuple(rent.id(), 100_000L));
+    }
+
     private BudgetStatus setWithLine(Long categoryId) {
         return budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(categoryId, 1_000_000L)));
     }
