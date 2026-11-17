@@ -126,6 +126,22 @@ class BudgetServiceTest {
         assertThat(events.ofType(MonthlyBudgetSet.class)).hasSize(2);
     }
 
+    // 그 달에 이미 있던 항목은 비용 분류가 꺼져도 유지 · 수정 · 빼기 가능 (04 설계 5.3, 기획서 P5-7)
+    @Test
+    @DisplayName("월 예산 설정 - 꺼진 상위의 기존 항목 → 금액 수정 허용")
+    void setKeepsLineOfDeactivatedTop() {
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(rent.id(), 1_000_000L)));
+        categoryService.deactivate(STORE_ID, rent.id());
+
+        BudgetStatus status = budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L,
+                List.of(new BudgetLineInput(rent.id(), 1_200_000L)));
+
+        assertThat(status.lines())
+                .extracting(BudgetLineStatus::categoryId, BudgetLineStatus::active, BudgetLineStatus::budget)
+                .contains(tuple(rent.id(), false, 1_200_000L));
+        assertThat(jdbc.queryForObject("SELECT amount FROM budget.budget_lines", Long.class)).isEqualTo(1_200_000L);
+    }
+
     private BudgetStatus setWithLine(Long categoryId) {
         return budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(categoryId, 1_000_000L)));
     }
