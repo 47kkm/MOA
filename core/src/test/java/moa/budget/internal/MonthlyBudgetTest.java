@@ -60,6 +60,15 @@ class MonthlyBudgetTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    // 화면에서는 나올 수 없다 (상위 비용 분류마다 한 행). 들어오면 400 (04 설계 5.3, D2-15와 같은 처리)
+    @Test
+    @DisplayName("월 예산 설정 - 같은 비용 분류 항목 두 번 → 거부")
+    void rejectsDuplicateCategory() {
+        assertThatThrownBy(() -> MonthlyBudget.set(STORE_ID, THIS_MONTH, 5_000_000L,
+                List.of(new BudgetLineInput(FOOD, 1_000_000L), new BudgetLineInput(FOOD, 2_000_000L)), THIS_MONTH))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static MonthlyBudget withTotal(Long total) {
         return MonthlyBudget.set(STORE_ID, THIS_MONTH, total, List.of(), THIS_MONTH);
     }
