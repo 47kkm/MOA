@@ -53,16 +53,21 @@ public class BudgetService {
     public BudgetStatus set(Long storeId, YearMonth yearMonth, Long total, List<BudgetLineInput> lines) {
         YearMonth thisMonth = YearMonth.now(clock);
         Optional<MonthlyBudget> existing = budgets.findByStoreIdAndMonth(storeId, yearMonth.atDay(1));
+        boolean changed;
         if (existing.isPresent()) {
             Set<Long> before = categoryIds(existing.get());
-            existing.get().change(total, lines, thisMonth);
+            // 바뀐 것이 없으면 change가 false를 돌려준다. 아무 일 없고 이벤트도 없다 (04 설계 5.2)
+            changed = existing.get().change(total, lines, thisMonth);
             rejectUnavailable(storeId, existing.get(), before);
         } else {
             MonthlyBudget budget = MonthlyBudget.set(storeId, yearMonth, total, lines, thisMonth);
             rejectUnavailable(storeId, budget, Set.of());
             budgets.save(budget);
+            changed = true;
         }
-        events.publishEvent(new MonthlyBudgetSet(storeId, yearMonth));
+        if (changed) {
+            events.publishEvent(new MonthlyBudgetSet(storeId, yearMonth));
+        }
         return status(storeId, yearMonth);
     }
 
