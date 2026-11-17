@@ -28,10 +28,11 @@ public final class BudgetUsage {
     }
 
     // 소진율 = 소진 ÷ 예산, 정수 %로 반올림 (51%, 109%) (04 설계 5.3)
-    public int ratePercent() {
+    // 상한이 없어 예산이 작고 소진이 크면 int를 넘는다 → long
+    public long ratePercent() {
         return BigDecimal.valueOf(spent.getAmount()).multiply(BigDecimal.valueOf(100))
                 .divide(BigDecimal.valueOf(budget.getAmount()), 0, RoundingMode.HALF_UP)
-                .intValueExact();
+                .longValueExact();
     }
 
     // 구간: 80% 미만 기본 · 80% 이상 주의 · 100% 이상 초과 (04 설계 5.3, D5-9)

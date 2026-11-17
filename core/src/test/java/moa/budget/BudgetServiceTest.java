@@ -167,7 +167,7 @@ class BudgetServiceTest {
         assertThat(status.lines())
                 .extracting(BudgetLineStatus::categoryId, BudgetLineStatus::spent, BudgetLineStatus::remaining,
                         BudgetLineStatus::ratePercent, BudgetLineStatus::level)
-                .contains(tuple(food.id(), 215_000L, 1_785_000L, 11, BudgetLevel.NORMAL));
+                .contains(tuple(food.id(), 215_000L, 1_785_000L, 11L, BudgetLevel.NORMAL));
     }
 
     // 소진은 저장하지 않고 매번 expense에서 계산한다. 그래서 예산보다 먼저 들어간 비용도 바로 보인다 (04 설계 D5-1, 기획서 5.3)

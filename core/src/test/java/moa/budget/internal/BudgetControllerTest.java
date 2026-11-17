@@ -49,8 +49,8 @@ class BudgetControllerTest {
     @DisplayName("월 예산 현황 조회 - 200과 본문 (yearMonth \"2026-11\", 항목 없는 행은 예산 칸 null)")
     void statusReturns200() throws Exception {
         given(budgetService.status(1L, NOVEMBER)).willReturn(new BudgetStatus(NOVEMBER, 5_000_000L, 2_130_000L,
-                2_870_000L, 43, BudgetLevel.NORMAL, 1_500_000L, List.of(
-                        new BudgetLineStatus(10L, "식자재", true, 2_000_000L, 2_130_000L, -130_000L, 107,
+                2_870_000L, 43L, BudgetLevel.NORMAL, 1_500_000L, List.of(
+                        new BudgetLineStatus(10L, "식자재", true, 2_000_000L, 2_130_000L, -130_000L, 107L,
                                 BudgetLevel.OVER, 1_900_000L),
                         new BudgetLineStatus(20L, "임대료", false, null, 0L, null, null, null, 0L))));
 
@@ -80,8 +80,8 @@ class BudgetControllerTest {
     @DisplayName("월 예산 설정 - 200과 본문")
     void setReturns200() throws Exception {
         given(budgetService.set(1L, NOVEMBER, 5_000_000L, List.of(new BudgetLineInput(10L, 2_000_000L))))
-                .willReturn(new BudgetStatus(NOVEMBER, 5_000_000L, 0L, 5_000_000L, 0, BudgetLevel.NORMAL, 3_000_000L,
-                        List.of(new BudgetLineStatus(10L, "식자재", true, 2_000_000L, 0L, 2_000_000L, 0,
+                .willReturn(new BudgetStatus(NOVEMBER, 5_000_000L, 0L, 5_000_000L, 0L, BudgetLevel.NORMAL, 3_000_000L,
+                        List.of(new BudgetLineStatus(10L, "식자재", true, 2_000_000L, 0L, 2_000_000L, 0L,
                                 BudgetLevel.NORMAL, 0L))));
 
         mvc.perform(put("/api/stores/1/budgets/2026-11")
