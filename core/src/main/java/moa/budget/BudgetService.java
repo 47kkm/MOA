@@ -5,6 +5,7 @@ import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -53,11 +54,12 @@ public class BudgetService {
         YearMonth thisMonth = YearMonth.now(clock);
         Optional<MonthlyBudget> existing = budgets.findByStoreIdAndMonth(storeId, yearMonth.atDay(1));
         if (existing.isPresent()) {
+            Set<Long> before = categoryIds(existing.get());
             existing.get().change(total, lines, thisMonth);
-            rejectUnavailable(storeId, existing.get());
+            rejectUnavailable(storeId, existing.get(), before);
         } else {
             MonthlyBudget budget = MonthlyBudget.set(storeId, yearMonth, total, lines, thisMonth);
-            rejectUnavailable(storeId, budget);
+            rejectUnavailable(storeId, budget, Set.of());
             budgets.save(budget);
         }
         events.publishEvent(new MonthlyBudgetSet(storeId, yearMonth));
@@ -84,17 +86,21 @@ public class BudgetService {
     }
 
     // 항목은 상위 비용 분류만, 새 항목은 켜진 상위만 (04 설계 5.3, 기획서 P5-7)
-    // 하위 · 없는 것 · 다른 매장의 것은 tops에 없다
-    private void rejectUnavailable(Long storeId, MonthlyBudget budget) {
+    // 하위 · 없는 것 · 다른 매장의 것은 tops에 없다. 그 달에 이미 있던 항목(before)은 꺼진 상위여도 유지 · 수정 가능
+    private void rejectUnavailable(Long storeId, MonthlyBudget budget, Set<Long> before) {
         Map<Long, CategoryInfo> tops = categories.tops(storeId).stream()
                 .collect(Collectors.toMap(CategoryInfo::id, Function.identity()));
         for (BudgetLine line : budget.getLines()) {
             CategoryInfo top = tops.get(line.getCategoryId());
-            if (top == null || !top.active()) {
+            if (top == null || !top.active() && !before.contains(line.getCategoryId())) {
                 throw new MoaException(ErrorCode.BUDGET_CATEGORY_UNAVAILABLE,
                         "category is not available for a budget line: " + line.getCategoryId());
             }
         }
+    }
+
+    private static Set<Long> categoryIds(MonthlyBudget budget) {
+        return budget.getLines().stream().map(BudgetLine::getCategoryId).collect(Collectors.toSet());
     }
 
     private static BudgetLineStatus lineStatus(CategoryInfo top, Optional<BudgetLine> line, long spent) {
