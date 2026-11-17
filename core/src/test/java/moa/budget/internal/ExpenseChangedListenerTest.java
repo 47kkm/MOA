@@ -85,6 +85,17 @@ class ExpenseChangedListenerTest {
                         new BudgetSpentUpdated(STORE_ID, THIS_MONTH, food.id(), 215_000L));
     }
 
+    // 그 달 예산이 없으면 아무것도 내지 않는다 (요구사항정의서 8.5 "무시", 04 설계 5.2). 소진은 현황 조회 때 계산된다
+    @Test
+    @DisplayName("소진액 갱신 - 예산 없는 달의 비용 등록 → 이벤트 없음")
+    void noBudgetNoEvent(AssertablePublishedEvents events) {
+        budgetService.set(STORE_ID, THIS_MONTH.plusMonths(1), 5_000_000L, List.of());
+
+        expenseService.register(STORE_ID, beans.id(), 180_000L, TODAY, null);
+
+        assertThat(events.ofType(BudgetSpentUpdated.class)).isEmpty();
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     static class FixedClock {
 
