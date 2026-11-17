@@ -206,6 +206,21 @@ class BudgetServiceTest {
                 .containsExactly(tuple(food.id(), 0L), tuple(rent.id(), 100_000L));
     }
 
+    // 예산 없는 달도 200. 예산 칸만 null이고 소진 · 지난 달 실제는 있다 (04 설계 5.2, 5.7)
+    @Test
+    @DisplayName("월 예산 현황 조회 - 예산 없는 달 → 예산 칸만 null, 소진 · 지난 달 실제는 있음")
+    void statusWithoutBudget() {
+        expenseService.register(STORE_ID, beans.id(), 180_000L, LocalDate.of(2026, 11, 5), null);
+        expenseService.register(STORE_ID, milk.id(), 40_000L, LocalDate.of(2026, 10, 31), null);
+        expenseService.register(STORE_ID, rent.id(), 1_000_000L, LocalDate.of(2026, 10, 1), null);
+
+        BudgetStatus status = budgetService.status(STORE_ID, THIS_MONTH);
+
+        assertThat(status).isEqualTo(new BudgetStatus(THIS_MONTH, null, 180_000L, null, null, null, null, List.of(
+                new BudgetLineStatus(food.id(), "식자재", true, null, 180_000L, null, null, null, 40_000L),
+                new BudgetLineStatus(rent.id(), "임대료", true, null, 0L, null, null, null, 1_000_000L))));
+    }
+
     private BudgetStatus setWithLine(Long categoryId) {
         return budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(categoryId, 1_000_000L)));
     }
