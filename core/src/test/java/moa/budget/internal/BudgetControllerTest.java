@@ -2,6 +2,7 @@ package moa.budget.internal;
 
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -14,10 +15,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.FilterType;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import moa.budget.BudgetLevel;
+import moa.budget.BudgetLineInput;
 import moa.budget.BudgetLineStatus;
 import moa.budget.BudgetService;
 import moa.budget.BudgetStatus;
@@ -60,5 +63,33 @@ class BudgetControllerTest {
                 .andExpect(jsonPath("$.lines[0].lastMonthSpent").value(1_900_000))
                 .andExpect(jsonPath("$.lines[1].active").value(false))
                 .andExpect(jsonPath("$.lines[1].budget").isEmpty());
+    }
+
+    // 공통 핸들러가 Spring의 400을 VALIDATION으로 바꾼다 (04 설계 0.6, 5.7)
+    @Test
+    @DisplayName("월 예산 현황 조회 - yearMonth 형식 오류 → 400 VALIDATION")
+    void statusRejectsBadYearMonth() throws Exception {
+        mvc.perform(get("/api/stores/1/budgets/2026-13"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION"));
+    }
+
+    @Test
+    @DisplayName("월 예산 설정 - 200과 본문")
+    void setReturns200() throws Exception {
+        given(budgetService.set(1L, NOVEMBER, 5_000_000L, List.of(new BudgetLineInput(10L, 2_000_000L))))
+                .willReturn(new BudgetStatus(NOVEMBER, 5_000_000L, 0L, 5_000_000L, 0, BudgetLevel.NORMAL, 3_000_000L,
+                        List.of(new BudgetLineStatus(10L, "식자재", true, 2_000_000L, 0L, 2_000_000L, 0,
+                                BudgetLevel.NORMAL, 0L))));
+
+        mvc.perform(put("/api/stores/1/budgets/2026-11")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"total": 5000000, "lines": [{"categoryId": 10, "amount": 2000000}]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.budget").value(5_000_000))
+                .andExpect(jsonPath("$.unassigned").value(3_000_000))
+                .andExpect(jsonPath("$.lines[0].budget").value(2_000_000));
     }
 }
