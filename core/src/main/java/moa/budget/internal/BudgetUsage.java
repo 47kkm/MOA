@@ -3,6 +3,7 @@ package moa.budget.internal;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 
+import moa.budget.BudgetLevel;
 import moa.shared.Money;
 
 // 예산 대비 소진 (04 설계 5.4). 저장하지 않는 값. 잔여 · 소진율 · 구간 규칙이 사는 곳
@@ -31,5 +32,19 @@ public final class BudgetUsage {
         return BigDecimal.valueOf(spent.getAmount()).multiply(BigDecimal.valueOf(100))
                 .divide(BigDecimal.valueOf(budget.getAmount()), 0, RoundingMode.HALF_UP)
                 .intValueExact();
+    }
+
+    // 구간: 80% 미만 기본 · 80% 이상 주의 · 100% 이상 초과 (04 설계 5.3, D5-9)
+    // 반올림한 소진율이 아니라 금액끼리 비교한다. 99.95%는 100%로 보여도 주의
+    public BudgetLevel level() {
+        long spentAmount = spent.getAmount();
+        long budgetAmount = budget.getAmount();
+        if (spentAmount >= budgetAmount) {
+            return BudgetLevel.OVER;
+        }
+        if (spentAmount * 5 >= budgetAmount * 4) {
+            return BudgetLevel.WARNING;
+        }
+        return BudgetLevel.NORMAL;
     }
 }
