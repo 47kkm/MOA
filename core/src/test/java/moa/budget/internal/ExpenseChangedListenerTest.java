@@ -110,6 +110,24 @@ class ExpenseChangedListenerTest {
                         new BudgetSpentUpdated(STORE_ID, THIS_MONTH, rent.id(), 180_000L));
     }
 
+    // 날짜를 지난 달로 옮기면 두 달이 바뀐다. 예산이 있는 이번 달만 알린다. 삭제는 빠진 소진을 알린다
+    @Test
+    @DisplayName("소진액 갱신 - 비용 날짜를 지난 달로 · 삭제 → 예산 있는 달의 BudgetSpentUpdated")
+    void updateAndDeletePublish(AssertablePublishedEvents events) {
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of());
+        Long moved = expenseService.register(STORE_ID, beans.id(), 180_000L, TODAY, null).id();
+        Long deleted = expenseService.register(STORE_ID, rent.id(), 1_000_000L, TODAY, null).id();
+
+        expenseService.update(STORE_ID, moved, beans.id(), 180_000L, LocalDate.of(2026, 10, 31), null);
+        expenseService.delete(STORE_ID, deleted);
+
+        assertThat(events.ofType(BudgetSpentUpdated.class))
+                .containsExactly(new BudgetSpentUpdated(STORE_ID, THIS_MONTH, food.id(), 180_000L),
+                        new BudgetSpentUpdated(STORE_ID, THIS_MONTH, rent.id(), 1_000_000L),
+                        new BudgetSpentUpdated(STORE_ID, THIS_MONTH, food.id(), 0L),
+                        new BudgetSpentUpdated(STORE_ID, THIS_MONTH, rent.id(), 0L));
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     static class FixedClock {
 
