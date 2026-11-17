@@ -78,7 +78,9 @@ public class BudgetService {
         // 그 달 · 전 달 비용 합. 상위별은 하위를 합산한 값 (expense.totals)
         ExpenseTotals spent = totalsOf(storeId, yearMonth);
         ExpenseTotals lastMonth = totalsOf(storeId, yearMonth.minusMonths(1));
+        // 행: 켜진 상위 전부 + 항목이 있는 꺼진 상위 (04 설계 5.2, 기획서 P5-7)
         List<BudgetLineStatus> lines = categories.tops(storeId).stream()
+                .filter(top -> top.active() || budget.flatMap(b -> b.lineOf(top.id())).isPresent())
                 .map(top -> lineStatus(top, budget.flatMap(b -> b.lineOf(top.id())),
                         spent.byTop().getOrDefault(top.id(), 0L), lastMonth.byTop().getOrDefault(top.id(), 0L)))
                 .toList();
