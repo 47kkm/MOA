@@ -78,8 +78,10 @@ public class BudgetService {
         // 그 달 · 전 달 비용 합. 상위별은 하위를 합산한 값 (expense.totals)
         ExpenseTotals spent = totalsOf(storeId, yearMonth);
         ExpenseTotals lastMonth = totalsOf(storeId, yearMonth.minusMonths(1));
+        List<CategoryInfo> tops = categories.tops(storeId);
         // 행: 켜진 상위 전부 + 항목이 있는 꺼진 상위 (04 설계 5.2, 기획서 P5-7)
-        List<BudgetLineStatus> lines = categories.tops(storeId).stream()
+        // 지워진 비용 분류의 항목은 tops에 없어서 행이 생기지 않는다 (D5-4)
+        List<BudgetLineStatus> lines = tops.stream()
                 .filter(top -> top.active() || budget.flatMap(b -> b.lineOf(top.id())).isPresent())
                 .map(top -> lineStatus(top, budget.flatMap(b -> b.lineOf(top.id())),
                         spent.byTop().getOrDefault(top.id(), 0L), lastMonth.byTop().getOrDefault(top.id(), 0L)))
@@ -90,7 +92,18 @@ public class BudgetService {
         Money total = budget.get().getTotal();
         BudgetUsage usage = BudgetUsage.of(total, Money.create(spent.total()));
         return new BudgetStatus(yearMonth, total.getAmount(), spent.total(), usage.remaining(), usage.ratePercent(),
-                usage.level(), budget.get().unassigned().getAmount(), lines);
+                usage.level(), unassigned(budget.get(), tops), lines);
+    }
+
+    // 미배정 = 총액 − 항목 합. 지워진 비용 분류의 항목 금액은 미배정으로 돌아간다 (04 설계 D5-4)
+    // 지울 수 있는 비용 분류는 누적 비용 0건뿐이라(2.3) 그 항목의 소진은 늘 0이다
+    private static long unassigned(MonthlyBudget budget, List<CategoryInfo> tops) {
+        Set<Long> topIds = tops.stream().map(CategoryInfo::id).collect(Collectors.toSet());
+        long dropped = budget.getLines().stream()
+                .filter(line -> !topIds.contains(line.getCategoryId()))
+                .mapToLong(line -> line.getAmount().getAmount())
+                .sum();
+        return budget.unassigned().getAmount() + dropped;
     }
 
     // 항목은 상위 비용 분류만, 새 항목은 켜진 상위만 (04 설계 5.3, 기획서 P5-7)
