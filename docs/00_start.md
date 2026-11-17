@@ -405,7 +405,7 @@ Phase 1 전체를 한 번에 검토할 수 없으므로 **모듈 → 기능 → 
 | 테스트 DB | Testcontainers (MySQL) | H2는 MySQL DDL과 어긋남. Docker 있으므로 실제 MySQL 사용. 단위 테스트는 DB 없이 순수 Java |
 | 백엔드 테스트 | JUnit 5 · AssertJ · Mockito · ArchUnit | `@WebMvcTest`, `@DataJpaTest`(+Testcontainers) 레이어별 단위 테스트 |
 | LLM 연동 (Phase 2) | **Spring AI** | `ChatModel` 추상화에 Anthropic/Ollama 구현체 내장 → 4.5의 `LLMClient` 포트 역할. Phase 1에서는 의존성 미추가 |
-| 프론트 프레임워크 | **React** + Vite + TypeScript (2026-10-27 변경. 이전: Nuxt 3 + Vue 3) | Node v22 확인됨. 바꾼 이유: 시장의 React 수요. 사용자는 Vue/Nuxt 경험이 많고 React는 운영 경험만 있어, MOA 프론트로 React를 처음부터 끝까지 해 본다. 서버 렌더링이 필요 없는 대시보드라 Next.js가 아니라 Vite SPA. 라우터·서버 상태 라이브러리는 5주차 시작 때 정함 → `04_design_frontend.md` ★ F0-2 (2026-11-17) |
+| 프론트 프레임워크 | **React** + Vite + TypeScript (2026-10-27 변경. 이전: Nuxt 3 + Vue 3) | Node v22 확인됨. 바꾼 이유: 시장의 React 수요. 사용자는 Vue/Nuxt 경험이 많고 React는 운영 경험만 있어, MOA 프론트로 React를 처음부터 끝까지 해 본다. 서버 렌더링이 필요 없는 대시보드라 Next.js가 아니라 Vite SPA. 라우터·서버 상태 라이브러리는 React Router + TanStack Query (kei, 2026-11-17, `04_design_frontend.md` F0-2) |
 | 패키지 매니저 | npm | pnpm/yarn 미설치. 필요 시 corepack으로 전환 |
 | 프론트 테스트 | Vitest + React Testing Library | |
 | UI / 차트 | Tailwind CSS / ECharts | 브랜드 방향 "깔끔한 대시보드, 직관적 시각화" (2026-10-27 Nuxt UI에서 변경) |
