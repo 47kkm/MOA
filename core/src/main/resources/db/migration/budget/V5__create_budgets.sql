@@ -1,6 +1,6 @@
 -- 월 예산 (04 설계 5.8)
 -- created_at·updated_at은 DB가 채운다. 엔티티는 이 두 칸을 모른다 (04 설계 0.4)
--- V6: sales(V5)보다 먼저 머지되면 V5와 맞바꾼다 (04 설계 D5-5)
+-- V5: sales보다 먼저 머지되므로 맞바꿈. 처음엔 V6, sales가 V5 (04 설계 D5-5)
 CREATE TABLE budget.monthly_budgets
 (
   id            BIGINT        AUTO_INCREMENT PRIMARY KEY,
