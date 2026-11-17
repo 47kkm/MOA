@@ -142,6 +142,17 @@ class BudgetServiceTest {
         assertThat(jdbc.queryForObject("SELECT amount FROM budget.budget_lines", Long.class)).isEqualTo(1_200_000L);
     }
 
+    // 바뀐 것 없는 덮어쓰기는 아무 일 없고 이벤트도 없다 (04 설계 5.2, 5.7)
+    @Test
+    @DisplayName("월 예산 설정 - 바뀐 것 없음 → 이벤트 없음")
+    void setSameNoEvent(AssertablePublishedEvents events) {
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(food.id(), 2_000_000L)));
+
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(food.id(), 2_000_000L)));
+
+        assertThat(events.ofType(MonthlyBudgetSet.class)).hasSize(1);
+    }
+
     private BudgetStatus setWithLine(Long categoryId) {
         return budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(categoryId, 1_000_000L)));
     }
