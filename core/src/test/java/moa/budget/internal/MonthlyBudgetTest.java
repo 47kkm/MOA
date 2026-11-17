@@ -47,6 +47,19 @@ class MonthlyBudgetTest {
         assertThatThrownBy(() -> withLine(0L)).isInstanceOf(IllegalArgumentException.class);
     }
 
+    // 같으면 허용, 차이는 미배정 (04 설계 5.3, 요구사항정의서 8.5)
+    @Test
+    @DisplayName("월 예산 설정 - 항목 합 5,000,001 > 총액 5,000,000 → 거부 (5,000,000은 허용)")
+    void rejectsLinesOverTotal() {
+        MonthlyBudget full = MonthlyBudget.set(STORE_ID, THIS_MONTH, 5_000_000L,
+                List.of(new BudgetLineInput(FOOD, 3_000_000L), new BudgetLineInput(RENT, 2_000_000L)), THIS_MONTH);
+
+        assertThat(full.unassigned()).isEqualTo(Money.create(0));
+        assertThatThrownBy(() -> MonthlyBudget.set(STORE_ID, THIS_MONTH, 5_000_000L,
+                List.of(new BudgetLineInput(FOOD, 3_000_000L), new BudgetLineInput(RENT, 2_000_001L)), THIS_MONTH))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static MonthlyBudget withTotal(Long total) {
         return MonthlyBudget.set(STORE_ID, THIS_MONTH, total, List.of(), THIS_MONTH);
     }
