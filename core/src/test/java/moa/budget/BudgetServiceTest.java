@@ -94,6 +94,23 @@ class BudgetServiceTest {
                 .matching(MonthlyBudgetSet::yearMonth, THIS_MONTH);
     }
 
+    // 항목은 상위 비용 분류만, 새 항목은 켜진 상위만 (04 설계 5.3, 기획서 P5-7). 다른 매장의 비용 분류도 tops에 없어서 409
+    @Test
+    @DisplayName("월 예산 설정 - 하위 · 없는 · 꺼진 상위 새 항목 → BUDGET_CATEGORY_UNAVAILABLE")
+    void setRejectsUnavailableCategory() {
+        CategoryInfo labor = categoryService.add(STORE_ID, null, "인건비");
+        categoryService.deactivate(STORE_ID, labor.id());
+
+        assertFails(ErrorCode.BUDGET_CATEGORY_UNAVAILABLE, () -> setWithLine(beans.id()));
+        assertFails(ErrorCode.BUDGET_CATEGORY_UNAVAILABLE, () -> setWithLine(999L));
+        assertFails(ErrorCode.BUDGET_CATEGORY_UNAVAILABLE, () -> setWithLine(labor.id()));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM budget.monthly_budgets", Integer.class)).isZero();
+    }
+
+    private BudgetStatus setWithLine(Long categoryId) {
+        return budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(categoryId, 1_000_000L)));
+    }
+
     private static void assertFails(ErrorCode code, ThrowingCallable call) {
         assertThatThrownBy(call)
                 .isInstanceOfSatisfying(MoaException.class, e -> assertThat(e.getCode()).isEqualTo(code));
