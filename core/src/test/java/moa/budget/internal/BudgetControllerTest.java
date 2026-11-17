@@ -24,6 +24,8 @@ import moa.budget.BudgetLineInput;
 import moa.budget.BudgetLineStatus;
 import moa.budget.BudgetService;
 import moa.budget.BudgetStatus;
+import moa.shared.ErrorCode;
+import moa.shared.MoaException;
 
 /**
  * 컨트롤러만 띄우는 HTTP 테스트 (04 설계 0.7). 서비스는 가짜(Mock)라 규칙은 여기서 검사하지 않고,
@@ -91,5 +93,45 @@ class BudgetControllerTest {
                 .andExpect(jsonPath("$.budget").value(5_000_000))
                 .andExpect(jsonPath("$.unassigned").value(3_000_000))
                 .andExpect(jsonPath("$.lines[0].budget").value(2_000_000));
+    }
+
+    @Test
+    @DisplayName("월 예산 설정 - 쓸 수 없는 비용 분류 → 409 BUDGET_CATEGORY_UNAVAILABLE")
+    void setUnavailableCategory() throws Exception {
+        given(budgetService.set(1L, NOVEMBER, 5_000_000L, List.of(new BudgetLineInput(11L, 1_000_000L))))
+                .willThrow(new MoaException(ErrorCode.BUDGET_CATEGORY_UNAVAILABLE,
+                        "category is not available for a budget line: 11"));
+
+        mvc.perform(put("/api/stores/1/budgets/2026-11")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"total": 5000000, "lines": [{"categoryId": 11, "amount": 1000000}]}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BUDGET_CATEGORY_UNAVAILABLE"));
+    }
+
+    // 입력 규칙(합 ≤ 총액 등)은 MonthlyBudget이 IllegalArgumentException으로 거부 → 공통 핸들러가 400 (04 설계 0.6, 5.3)
+    // 금액은 원 단위 정수. 소수는 잘라 저장하지 않고 거부한다 (04 설계 D4-15)
+    @Test
+    @DisplayName("월 예산 설정 - 입력 규칙 위반 · 소수 금액 → 400 VALIDATION")
+    void setRejectsInvalidInput() throws Exception {
+        given(budgetService.set(1L, NOVEMBER, 1_000_000L, List.of(new BudgetLineInput(10L, 2_000_000L))))
+                .willThrow(new IllegalArgumentException("sum of lines must not exceed total"));
+
+        mvc.perform(put("/api/stores/1/budgets/2026-11")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"total": 1000000, "lines": [{"categoryId": 10, "amount": 2000000}]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION"));
+        mvc.perform(put("/api/stores/1/budgets/2026-11")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"total": 5000000.5, "lines": []}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION"));
     }
 }
