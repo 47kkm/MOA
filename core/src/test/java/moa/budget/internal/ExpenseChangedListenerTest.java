@@ -22,6 +22,7 @@ import org.springframework.modulith.test.ApplicationModuleTest.BootstrapMode;
 import org.springframework.modulith.test.AssertablePublishedEvents;
 
 import moa.TestcontainersConfiguration;
+import moa.budget.BudgetEvents.BudgetExceeded;
 import moa.budget.BudgetEvents.BudgetSpentUpdated;
 import moa.budget.BudgetLineInput;
 import moa.budget.BudgetService;
@@ -140,6 +141,20 @@ class ExpenseChangedListenerTest {
 
         assertThat(events.ofType(BudgetSpentUpdated.class))
                 .containsExactly(new BudgetSpentUpdated(STORE_ID, THIS_MONTH, food.id(), 180_000L));
+    }
+
+    // 예산 초과 = 100% 선을 아래 → 위로 넘는 순간 한 번 (04 설계 5.3, D5-9 "소진 ≥ 예산")
+    @Test
+    @DisplayName("예산 초과 감지 - 1,990,000에 20,000 → BudgetExceeded, 이어서 5,000 → 없음")
+    void exceededOnceWhenCrossing(AssertablePublishedEvents events) {
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of(new BudgetLineInput(food.id(), 2_000_000L)));
+        expenseService.register(STORE_ID, beans.id(), 1_990_000L, TODAY, null);
+
+        expenseService.register(STORE_ID, beans.id(), 20_000L, TODAY, null);
+        expenseService.register(STORE_ID, milk.id(), 5_000L, TODAY, null);
+
+        assertThat(events.ofType(BudgetExceeded.class))
+                .containsExactly(new BudgetExceeded(STORE_ID, THIS_MONTH, food.id(), 2_010_000L, 2_000_000L));
     }
 
     @TestConfiguration(proxyBeanMethods = false)
