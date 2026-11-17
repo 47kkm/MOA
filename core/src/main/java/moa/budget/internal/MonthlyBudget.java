@@ -63,6 +63,17 @@ public class MonthlyBudget {
         return new MonthlyBudget(storeId, validMonth(yearMonth, thisMonth), validTotal, validLines(lines, validTotal));
     }
 
+    // 다시 설정 = 덮어쓰기 (04 설계 5.4). 설정과 같은 입력 규칙. 항목은 줄을 전부 갈아 끼운다 (D5-2)
+    public boolean change(Long total, List<BudgetLineInput> lines, YearMonth thisMonth) {
+        validMonth(yearMonth(), thisMonth);
+        Money newTotal = validAmount(total);
+        List<BudgetLine> newLines = validLines(lines, newTotal);
+        this.total = newTotal;
+        this.lines.clear();
+        this.lines.addAll(newLines);
+        return true;
+    }
+
     // 고칠 수 있는 달은 이번 달 · 다음 달 (04 설계 5.3, 기획서 P5-1). thisMonth는 응용 서비스가 Clock으로 구해 넘긴다
     private static YearMonth validMonth(YearMonth yearMonth, YearMonth thisMonth) {
         if (!yearMonth.equals(thisMonth) && !yearMonth.equals(thisMonth.plusMonths(1))) {
