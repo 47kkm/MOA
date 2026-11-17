@@ -63,11 +63,14 @@ public class MonthlyBudget {
         return new MonthlyBudget(storeId, yearMonth, validTotal, validLines(lines, validTotal));
     }
 
-    // 항목 규칙: 금액은 총액과 같은 범위, 합 ≤ 총액 (같으면 허용). 차이는 미배정 (04 설계 5.3)
+    // 항목 규칙: 금액은 총액과 같은 범위, 한 비용 분류에 항목 하나, 합 ≤ 총액 (같으면 허용). 차이는 미배정 (04 설계 5.3)
     private static List<BudgetLine> validLines(List<BudgetLineInput> lines, Money total) {
         List<BudgetLine> result = lines.stream()
                 .map(l -> BudgetLine.of(l.categoryId(), validAmount(l.amount()).getAmount()))
                 .toList();
+        if (result.stream().map(BudgetLine::getCategoryId).distinct().count() < result.size()) {
+            throw new IllegalArgumentException("one line per category");
+        }
         if (sum(result) > total.getAmount()) {
             throw new IllegalArgumentException("sum of lines must not exceed total");
         }
