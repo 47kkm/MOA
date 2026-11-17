@@ -5,6 +5,7 @@ import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
@@ -64,10 +65,14 @@ public class MonthlyBudget {
     }
 
     // 다시 설정 = 덮어쓰기 (04 설계 5.4). 설정과 같은 입력 규칙. 항목은 줄을 전부 갈아 끼운다 (D5-2)
+    // 바뀌었으면 true. 총액이 같고 항목이 (순서와 상관없이) 같으면 아무 일 없이 false (Expense.change와 같은 모양)
     public boolean change(Long total, List<BudgetLineInput> lines, YearMonth thisMonth) {
         validMonth(yearMonth(), thisMonth);
         Money newTotal = validAmount(total);
         List<BudgetLine> newLines = validLines(lines, newTotal);
+        if (newTotal.equals(this.total) && Set.copyOf(newLines).equals(Set.copyOf(this.lines))) {
+            return false;
+        }
         this.total = newTotal;
         this.lines.clear();
         this.lines.addAll(newLines);
