@@ -109,6 +109,37 @@ class MonthlyBudgetTest {
         assertThat(budget.unassigned()).isEqualTo(Money.create(1_500_000));
     }
 
+    // 비용 수정(4.3)과 같은 모양. 바뀐 것이 없으면 응용 서비스가 MonthlyBudgetSet을 내지 않는다 (04 설계 5.2, 5.7)
+    // 항목은 순서와 상관없이 비교한다. 화면의 행 순서는 상위 비용 분류 순서라 항목 순서에 뜻이 없다
+    @Test
+    @DisplayName("월 예산 설정 - 바뀐 것 없음 → 변경 없음")
+    void noChange() {
+        MonthlyBudget budget = MonthlyBudget.set(STORE_ID, THIS_MONTH, 5_000_000L,
+                List.of(new BudgetLineInput(FOOD, 2_000_000L), new BudgetLineInput(RENT, 1_500_000L)), THIS_MONTH);
+
+        assertThat(budget.change(5_000_000L,
+                List.of(new BudgetLineInput(RENT, 1_500_000L), new BudgetLineInput(FOOD, 2_000_000L)), THIS_MONTH))
+                .isFalse();
+        assertThat(budget.getLines()).containsExactly(BudgetLine.of(FOOD, 2_000_000L), BudgetLine.of(RENT, 1_500_000L));
+    }
+
+    // 지난 달이 된 예산은 고칠 수 없다 (기획서 P5-1). 11월 예산을 12월에 다시 설정하면 거부
+    @Test
+    @DisplayName("월 예산 설정 - 다시 설정도 같은 입력 규칙 → 거부")
+    void changeRules() {
+        MonthlyBudget budget = MonthlyBudget.set(STORE_ID, THIS_MONTH, 5_000_000L,
+                List.of(new BudgetLineInput(FOOD, 2_000_000L)), THIS_MONTH);
+
+        assertThatThrownBy(() -> budget.change(0L, List.of(), THIS_MONTH))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> budget.change(1_000_000L, List.of(new BudgetLineInput(FOOD, 1_000_001L)), THIS_MONTH))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> budget.change(5_000_000L, List.of(), THIS_MONTH.plusMonths(1)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(budget.getTotal()).isEqualTo(Money.create(5_000_000));
+        assertThat(budget.getLines()).containsExactly(BudgetLine.of(FOOD, 2_000_000L));
+    }
+
     private static MonthlyBudget inMonth(YearMonth yearMonth) {
         return MonthlyBudget.set(STORE_ID, yearMonth, 1_000_000L, List.of(), THIS_MONTH);
     }
