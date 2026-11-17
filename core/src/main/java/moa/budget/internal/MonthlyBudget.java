@@ -72,9 +72,13 @@ public class MonthlyBudget {
     }
 
     // 항목 규칙: 금액은 총액과 같은 범위, 한 비용 분류에 항목 하나, 합 ≤ 총액 (같으면 허용). 차이는 미배정 (04 설계 5.3)
+    // 항목은 선택이라 목록이 없으면 항목 0개. 빈칸 · 0 항목은 프론트가 빼고 보낸다 (기획서 5.4)
     private static List<BudgetLine> validLines(List<BudgetLineInput> lines, Money total) {
+        if (lines == null) {
+            return List.of();
+        }
         List<BudgetLine> result = lines.stream()
-                .map(l -> BudgetLine.of(l.categoryId(), validAmount(l.amount()).getAmount()))
+                .map(l -> BudgetLine.of(validCategoryId(l.categoryId()), validAmount(l.amount()).getAmount()))
                 .toList();
         if (result.stream().map(BudgetLine::getCategoryId).distinct().count() < result.size()) {
             throw new IllegalArgumentException("one line per category");
@@ -85,12 +89,23 @@ public class MonthlyBudget {
         return result;
     }
 
+    // 항목의 비용 분류 필수. 고를 수 있는 상위인가는 category를 봐야 해서 밖 규칙 (응용 서비스, 04 설계 5.3)
+    private static Long validCategoryId(Long categoryId) {
+        if (categoryId == null) {
+            throw new IllegalArgumentException("categoryId is required");
+        }
+        return categoryId;
+    }
+
     private static long sum(List<BudgetLine> lines) {
         return lines.stream().mapToLong(l -> l.getAmount().getAmount()).sum();
     }
 
     // 금액 규칙: 총액 · 항목 금액 모두 1 이상 999,999,999 이하 (04 설계 5.3). 상한은 입력 규칙이라 Money가 아닌 여기서 본다 (0.8)
     private static Money validAmount(Long amount) {
+        if (amount == null) {
+            throw new IllegalArgumentException("amount is required");
+        }
         if (amount < 1 || amount > MAX_AMOUNT) {
             throw new IllegalArgumentException("amount must be between 1 and " + MAX_AMOUNT);
         }
