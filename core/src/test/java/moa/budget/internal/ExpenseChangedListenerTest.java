@@ -96,6 +96,20 @@ class ExpenseChangedListenerTest {
         assertThat(events.ofType(BudgetSpentUpdated.class)).isEmpty();
     }
 
+    // 재분류는 이전 상위에서 빠지고 이후 상위에 더해진다 (04 설계 5.2, D4-2의 이전 · 이후 값)
+    @Test
+    @DisplayName("소진액 갱신 - 비용 재분류 원두 → 임대료 → 식자재 · 임대료 둘 다 BudgetSpentUpdated")
+    void reclassifyPublishesBothTops(AssertablePublishedEvents events) {
+        budgetService.set(STORE_ID, THIS_MONTH, 5_000_000L, List.of());
+        Long id = expenseService.register(STORE_ID, beans.id(), 180_000L, TODAY, null).id();
+
+        expenseService.update(STORE_ID, id, rent.id(), 180_000L, TODAY, null);
+
+        assertThat(events.ofType(BudgetSpentUpdated.class))
+                .contains(new BudgetSpentUpdated(STORE_ID, THIS_MONTH, food.id(), 0L),
+                        new BudgetSpentUpdated(STORE_ID, THIS_MONTH, rent.id(), 180_000L));
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     static class FixedClock {
 
