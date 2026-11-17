@@ -25,6 +25,8 @@ import moa.shared.Money;
 @Table(name = "monthly_budgets", catalog = "budget")
 public class MonthlyBudget {
 
+    static final long MAX_AMOUNT = 999_999_999L;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -57,8 +59,16 @@ public class MonthlyBudget {
 
     public static MonthlyBudget set(Long storeId, YearMonth yearMonth, Long total, List<BudgetLineInput> lines,
             YearMonth thisMonth) {
-        return new MonthlyBudget(storeId, yearMonth, Money.create(total),
-                lines.stream().map(l -> BudgetLine.of(l.categoryId(), l.amount())).toList());
+        return new MonthlyBudget(storeId, yearMonth, validAmount(total),
+                lines.stream().map(l -> BudgetLine.of(l.categoryId(), validAmount(l.amount()).getAmount())).toList());
+    }
+
+    // 금액 규칙: 총액 · 항목 금액 모두 1 이상 999,999,999 이하 (04 설계 5.3). 상한은 입력 규칙이라 Money가 아닌 여기서 본다 (0.8)
+    private static Money validAmount(Long amount) {
+        if (amount < 1 || amount > MAX_AMOUNT) {
+            throw new IllegalArgumentException("amount must be between 1 and " + MAX_AMOUNT);
+        }
+        return Money.create(amount);
     }
 
     // 그 상위의 항목. 없으면 빈 값
