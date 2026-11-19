@@ -191,6 +191,17 @@ public class CategoryService {
         return result;
     }
 
+    // budget이 쓴다: 예산 항목에 고를 수 있는 상위, 현황 행 순서 · 이름 · 꺼짐 (04 설계 2.7, 5.7)
+    // 상위 전부(꺼진 것 포함), 만든 순서. tree와 달리 비용 건수를 세지 않는다 → 건수는 0
+    @Transactional(readOnly = true)
+    public List<CategoryInfo> tops(Long storeId) {
+        return categories.findByStoreId(storeId).stream()
+                .filter(Category::isTop)
+                .sorted(SIBLING_ORDER)
+                .map(top -> toInfo(top, null))
+                .toList();
+    }
+
     // 형제 = 같은 상위 아래. 상위끼리는 전체가 형제다. 꺼진 분류도 센다 (04 설계 2.3)
     private void rejectDuplicateName(Long storeId, Long parentId, String name) {
         if (categories.existsByStoreIdAndParentIdAndName(storeId, parentId, name)) {

@@ -628,6 +628,29 @@ class CategoryServiceTest {
         assertThat(infos.get(beans.id()).expenseCount()).isZero();
     }
 
+    // budget이 쓴다: 예산 항목에 고를 수 있는 상위, 현황 행 순서 · 이름 · 꺼짐 (04 설계 2.7, 5.7)
+    // tree와 달리 비용 건수를 세지 않는다 (매장의 비용 전부를 읽지 않게)
+    @Test
+    @DisplayName("상위 비용 분류 목록 - 꺼진 것 포함, 만든 순서, 하위 · 다른 매장은 빠짐, 건수 0")
+    void tops() {
+        CategoryInfo food = categoryService.add(STORE_ID, null, "식자재");
+        categoryService.add(STORE_ID, food.id(), "원두");
+        CategoryInfo rent = categoryService.add(STORE_ID, null, "임대료");
+        CategoryInfo labor = categoryService.add(STORE_ID, null, "인건비");
+        categoryService.deactivate(STORE_ID, rent.id());
+        categoryService.add(2L, null, "다른 매장");
+        usage.set(food.id(), 5);
+
+        List<CategoryInfo> tops = categoryService.tops(STORE_ID);
+
+        assertThat(tops)
+                .extracting(CategoryInfo::id, CategoryInfo::name, CategoryInfo::active, CategoryInfo::expenseCount)
+                .containsExactly(
+                        tuple(food.id(), "식자재", true, 0L),
+                        tuple(rent.id(), "임대료", false, 0L),
+                        tuple(labor.id(), "인건비", true, 0L));
+    }
+
     // 꺼진 것까지 tree 순서대로 "경로 → 켜짐 여부"
     private Map<String, Boolean> activeByPath() {
         Map<String, Boolean> result = new LinkedHashMap<>();
