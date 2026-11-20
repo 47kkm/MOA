@@ -41,4 +41,16 @@ describe('API 클라이언트', () => {
 
         expect(contentType).toBe('application/json')
     })
+
+    it('409 → ApiError(409, 코드)', async () => {
+        server.use(
+            http.post('/api/stores', () =>
+                HttpResponse.json({ code: 'STORE_ALREADY_EXISTS', message: '이미 있음' }, { status: 409 }),
+            ),
+        )
+
+        const call = request('POST', '/api/stores', { name: '모아 카페' })
+
+        await expect(call).rejects.toMatchObject({ status: 409, code: 'STORE_ALREADY_EXISTS' })
+    })
 })
