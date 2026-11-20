@@ -64,10 +64,10 @@ report ── 조회 ──▶ store · category · sales · expense · budget  
 | 0 | 공통 | 구현됨 (PR #1 뼈대, #4 Money) |
 | 1 | store | 구현됨 (PR #2) |
 | 2 | category | 구현됨 (PR #3) |
-| 3 | sales | 설계 요약 (kei, 2026-11-07). 구현은 11/14부터 |
+| 3 | sales | 설계 요약 (kei, 2026-11-07). 구현은 kei가 프론트 코어 뒤에 (00_start 재계획, 2026-11-17) |
 | 4 | expense | 구현됨 (PR #5, 2026-11-11) |
-| 5 | budget | kei 결정 끝 (2026-11-16, ★ 5개 전부 추천안). 구현 전 |
-| 6 | report | 예정 (4주차) |
+| 5 | budget | 구현됨 (PR #6, 2026-11-20) |
+| 6 | report | 설계 초안 다음 차례 (Claude). 구현은 sales 머지 뒤 |
 
 ## 용어
 
@@ -1300,7 +1300,7 @@ report ── 조회 ──▶ sales                  기간·결제수단별 �
 
 ### 3.8 테이블·파일 [참고]
 
-`db/migration/sales/V5__create_sales.sql` (D4-13. 처음엔 V4, 2026-11-10 expense와 맞바꿈)
+`db/migration/sales/V6__create_sales.sql` (D4-13 · D5-5. 처음엔 V4 → expense와 맞바꿔 V5 (2026-11-10) → budget이 먼저 머지되어 V6 (2026-11-20))
 
 ```sql
 CREATE TABLE sales.payment_methods (
@@ -1487,7 +1487,7 @@ ExpenseService.list(storeId, yearMonth, categoryId?)
 | D4-10 | 요청·응답의 금액 | 숫자 하나 (`"amount": 35000`) | 프론트가 객체를 풀 필요 없음 |
 | D4-11 | 기간·분류별 비용 합계를 만드는 때 | **확정 (kei, 2026-11-07)** 4주차 report·budget 설계와 함께 → 5.7 `totals(storeId, from, to)`로 정함 (2026-11-16) | 모양이 받는 쪽에 달림. 지금 만들면 고칠 가능성이 큼 |
 | D4-12 | `Money`를 누가 먼저 쓰나 | **확정 (kei, 2026-11-07)** 아래 표의 A | 위치(`moa.shared`)는 0.8에서 정해짐. sales와 expense가 둘 다 11/08 시작 |
-| D4-13 | Flyway 번호 | **바꿈 (kei, 2026-11-10)** expense `V4`, sales `V5` (처음엔 sales `V4`, expense `V5`) | 큰 번호가 먼저 적용된 DB는 작은 번호를 거부하므로, 먼저 머지되는 쪽이 작은 번호. sales가 11/14 뒤로 밀려 expense가 먼저 |
+| D4-13 | Flyway 번호 | **바꿈 (kei, 2026-11-10)** expense `V4`, sales `V5` (처음엔 sales `V4`, expense `V5`) | 큰 번호가 먼저 적용된 DB는 작은 번호를 거부하므로, 먼저 머지되는 쪽이 작은 번호. sales가 11/14 뒤로 밀려 expense가 먼저. 그 뒤 budget도 먼저 머지되어 sales는 `V6` (D5-5, 2026-11-20) |
 | D4-14 | expense PR에서 kei가 할 것 | **확정 (kei, 2026-11-07)** 조각 없음, 질문 2개만 | 6.1의 조각은 AI가 짜는 1·2·4주차 규칙. 3주차는 sales 전체가 kei 손 |
 | D4-15 | 정수 칸에 소수 (`"amount": 1000.5`) | **확정 (kei, 2026-11-10)** 400 `VALIDATION`으로 거부. `application.yml`의 `spring.jackson.deserialization.accept-float-as-int: false` | Jackson 기본은 잘라서 받아 1000으로 조용히 저장됨 (PR #5에서 확인). 금액은 원 단위 정수. 설정 하나라 모든 모듈에 적용 → sales 금액도 같이 막힘 |
 | D4-16 | 메모만 고친 수정 | **확정 (kei, 2026-11-10)** `ExpenseUpdated`를 그대로 발행 (이전·이후의 금액·비용 분류가 같음) | D4-2 "저장 한 번 = 이벤트 하나" 그대로. budget은 차이가 0이라 바뀌는 것 없음 |
@@ -1584,8 +1584,8 @@ CREATE TABLE expense.expenses (
 
 ## 5. budget 모듈
 
-- 상태: **kei 결정 끝** (Claude 초안 2026-11-10, ★ 5개 2026-11-16 전부 추천안). 구현 전
-- kei가 정할 것 5개는 5.6에 ★로 표시하고 추천을 적었다. 정해지면 ★를 지우고 결론을 적는다. 5개 모두 2026-11-16 결정 (전부 추천안)
+- 상태: **구현됨** (Claude, PR #6, 2026-11-20 머지). 설계는 Claude 초안 2026-11-10, ★ 5개 kei 결정 2026-11-16 (전부 추천안)
+- 구현하며 Claude가 정한 것 7개는 PR #6 본문 표. **7개 모두 그대로 (kei 확인, 2026-11-20).** 그중 하나: 꺼진 상위에 비용만 있고 항목이 없으면 현황에 행이 없음 → 행의 합 ≠ 그 달 비용 합. 기획서 5.3 ④ "꺼진 분류는 예산이 있을 때만"과 같음
 - report(6장)는 sales 매출이 있어야 하므로 sales 뒤에 설계한다. 이 장은 budget만 다룬다
 
 ### 5.1 한눈에 [검토]
@@ -1737,7 +1737,7 @@ ExpenseRegistered / Updated / Reclassified / Deleted   (커밋 후 · 동기 · 
 | D5-2 | 예산 항목 매핑 | **확정 (kei, 2026-11-16)** A: `@ElementCollection` 값 컬렉션 | 아래 표 |
 | D5-3 | 80% · 100% 알림을 누가 판단하나 (D4-9, 기획서 P5-5) | **확정 (kei, 2026-11-16)** A: 구간은 서버(`BudgetUsage`)가 정하고, 넘었는지는 프론트가 비교. 저장 전 현황 → 비용 저장 → 현황 다시 조회 → 그 상위(항목이 없으면 총액)의 구간이 올라갔으면 토스트 (주의 = 80%, 초과 = 100%) | 선 규칙은 도메인에 하나. 리스너가 동기라 저장 직후 조회가 맞음. 대안 B: budget이 "넘은 선"을 저장하고 프론트가 읽으면 지움 → 테이블 · 읽음 처리가 더 생김. 대안 C: 비용 저장 응답에 담기 → expense → budget 의존 · 순환 ✗ |
 | D5-4 | 예산 항목이 있는 비용 분류를 지우면 | **확정 (kei, 2026-11-16)** A: 삭제는 그대로 허용. budget은 지워진 비용 분류의 항목을 현황에서 빼고 미배정으로 돌림 | 지울 수 있는 건 누적 비용 0건뿐(P2-7)이라 그 항목의 소진은 늘 0. category · 기획서 2장을 바꾸지 않음. 대안 B: 예산 항목도 "쓰임"으로 세어 삭제 거부 → `CategoryUsage` 구현이 둘, 2장 "누적 비용 0건" 문구 · 삭제 버튼 조건 변경. 대안 C: category가 삭제 이벤트를 새로 냄(D2-6은 없음) → budget이 항목을 지움, 지난 달 기록이 바뀜 |
-| D5-5 | Flyway 번호 | **확정 (kei, 2026-11-16)** A: 지금은 `V6`로 쓰고, sales(`V5`)보다 먼저 머지되면 맞바꿈 | 먼저 머지되는 쪽이 작은 번호 (D4-13). 대안 B: `V6` 고정, budget PR은 sales 머지를 기다림 |
+| D5-5 | Flyway 번호 | **확정 (kei, 2026-11-16)** A: 지금은 `V6`로 쓰고, sales(`V5`)보다 먼저 머지되면 맞바꿈. **결과: 맞바꿈** budget `V5`, sales `V6` (`897bcee`, 2026-11-20 머지) | 먼저 머지되는 쪽이 작은 번호 (D4-13). 대안 B: `V6` 고정, budget PR은 sales 머지를 기다림 |
 | D5-6 | 매출과의 연결 | 없음 | 요구사항정의서 8.5 · 기획서 5장 모두 비용만. "목표 매출"(00_start 1.1)은 Phase 1 범위 밖 |
 | D5-7 | 지난 달 예산 복사 (선택) | 백엔드 API 없음. 프론트가 전 달 현황으로 입력란을 채우고 저장은 월 예산 설정 | 기획서 5.3 ⑥ "채움. 저장은 따로". 요구사항정의서 8.5 "생성"보다 기획서가 나중 |
 | D5-8 | 이벤트 이름 · 칸 | 요구사항정의서 7.3 그대로. 단 `BudgetExceeded`의 `limit` → `budget`. 총액이 넘으면 `categoryId` null | 기획서 0.6 "한도" 금지. 기획서 5.5가 총액 초과도 알림 |
@@ -1802,7 +1802,7 @@ ExpenseRegistered / Updated / Reclassified / Deleted   (커밋 후 · 동기 · 
 
 ### 5.8 테이블·파일 [참고]
 
-`db/migration/budget/V6__create_budgets.sql` (D5-5)
+`db/migration/budget/V5__create_budgets.sql` (D5-5. 처음엔 V6, sales보다 먼저 머지되어 맞바꿈)
 
 ```sql
 CREATE TABLE budget.monthly_budgets (

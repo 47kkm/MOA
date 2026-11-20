@@ -31,6 +31,8 @@ dependencies {
     implementation 'org.springframework.modulith:spring-modulith-starter-jdbc'
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-mysql'
+    // Swagger: 컨트롤러를 읽어 /v3/api-docs와 /swagger-ui.html을 만든다. 2.8.x = Spring Boot 3.x용
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.17'
     runtimeOnly 'com.mysql:mysql-connector-j'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'

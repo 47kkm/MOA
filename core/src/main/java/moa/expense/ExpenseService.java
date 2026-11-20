@@ -3,6 +3,7 @@ package moa.expense;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -96,6 +97,25 @@ public class ExpenseService {
         List<ExpenseInfo> items = month.stream().map(e -> toInfo(e, infos.get(e.getCategoryId()))).toList();
         Money total = month.stream().map(Expense::getAmount).reduce(Money.create(0), Money::plus);
         return new ExpenseList(yearMonth, total.getAmount(), items.size(), items);
+    }
+
+    // budget(소진 · 지난 달 실제)과 report가 쓴다. 기간은 양 끝 포함 (04 설계 5.7, D4-11)
+    // 상위 합산은 지금의 비용 분류 tree로 한다. 저장해 두지 않으니 비용 분류가 바뀌어도 그대로 맞다 (D5-1)
+    @Transactional(readOnly = true)
+    public ExpenseTotals totals(Long storeId, LocalDate from, LocalDate to) {
+        Map<Long, Long> byCategory = new HashMap<>();
+        expenses.findByStoreIdAndExpenseDateBetweenOrderByExpenseDateDescIdDesc(storeId, from, to)
+                .forEach(e -> byCategory.merge(e.getCategoryId(), e.getAmount().getAmount(), Long::sum));
+        Map<Long, CategoryInfo> infos = categories.infoOf(storeId, byCategory.keySet());
+        Map<Long, Long> byTop = new HashMap<>();
+        byCategory.forEach((categoryId, sum) -> byTop.merge(topOf(categoryId, infos.get(categoryId)), sum, Long::sum));
+        long total = byCategory.values().stream().mapToLong(Long::longValue).sum();
+        return new ExpenseTotals(total, byTop, byCategory);
+    }
+
+    // 하위면 그 상위, 상위면 자신. 비용이 있는 비용 분류는 지울 수 없어서(2.3) infoOf에서 빠지는 일은 없다
+    private static Long topOf(Long categoryId, CategoryInfo info) {
+        return info == null || info.parentId() == null ? categoryId : info.parentId();
     }
 
     private Expense find(Long storeId, Long id) {

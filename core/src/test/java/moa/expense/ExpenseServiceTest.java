@@ -2,6 +2,7 @@ package moa.expense;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.entry;
 import static org.assertj.core.api.Assertions.tuple;
 
 import java.time.Clock;
@@ -289,6 +290,27 @@ class ExpenseServiceTest {
         assertThat(categoryService.tree(STORE_ID, true))
                 .extracting(CategoryInfo::path, CategoryInfo::expenseCount)
                 .contains(tuple("식자재 > 원두", 2L), tuple("식자재 > 유제품", 1L), tuple("임대료", 0L));
+    }
+
+    // budget(소진 · 지난 달 실제)과 report가 쓴다. 기간은 양 끝 포함 (04 설계 5.7, D4-11)
+    // byTop은 하위를 상위로 합산, byCategory는 비용이 가리키는 비용 분류 그대로. 다른 매장 · 기간 밖은 빠짐
+    @Test
+    @DisplayName("기간·분류별 비용 합계 - 상위별(하위 포함) · 하위별 · 전체")
+    void totals() {
+        expenseService.register(STORE_ID, rent.id(), 1_000_000L, LocalDate.of(2026, 10, 1), null);
+        expenseService.register(STORE_ID, beans.id(), 180_000L, LocalDate.of(2026, 10, 5), null);
+        expenseService.register(STORE_ID, milk.id(), 35_000L, LocalDate.of(2026, 10, 20), null);
+        expenseService.register(STORE_ID, beans.id(), 50_000L, LocalDate.of(2026, 9, 30), null);
+        jdbc.update("""
+                INSERT INTO expense.expenses (store_id, category_id, amount, expense_date, classified_by, approved)
+                VALUES (2, ?, 5000, '2026-10-28', 'USER', 1)""", beans.id());
+
+        ExpenseTotals totals = expenseService.totals(STORE_ID, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31));
+
+        assertThat(totals.total()).isEqualTo(1_215_000L);
+        assertThat(totals.byTop()).containsOnly(entry(food.id(), 215_000L), entry(rent.id(), 1_000_000L));
+        assertThat(totals.byCategory()).containsOnly(entry(beans.id(), 180_000L), entry(milk.id(), 35_000L),
+                entry(rent.id(), 1_000_000L));
     }
 
     private int count() {
