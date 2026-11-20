@@ -27,4 +27,18 @@ describe('API 클라이언트', () => {
 
         expect(received).toEqual({ name: '모아 카페' })
     })
+
+    it('POST → Content-Type: application/json 헤더를 붙임', async () => {
+        let contentType: string | null = null
+        server.use(
+            http.post('/api/stores', ({ request: req }) => {
+                contentType = req.headers.get('Content-Type')
+                return HttpResponse.json({ id: 1 }, { status: 201 })
+            }),
+        )
+
+        await request('POST', '/api/stores', { name: '모아 카페' })
+
+        expect(contentType).toBe('application/json')
+    })
 })
