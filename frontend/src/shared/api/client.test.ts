@@ -53,4 +53,14 @@ describe('API 클라이언트', () => {
 
         await expect(call).rejects.toMatchObject({ status: 409, code: 'STORE_ALREADY_EXISTS' })
     })
+
+    it('204 → 값 없음', async () => {
+        server.use(
+            http.delete('/api/stores/1/categories/1', () => new HttpResponse(null, { status: 204 })),
+        )
+
+        const call = request('DELETE', '/api/stores/1/categories/1')
+
+        await expect(call).resolves.toBeUndefined()
+    })
 })
