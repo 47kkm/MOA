@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import { server } from '../../test/server'
-import { request } from './client.ts'
+import { ApiError, request } from './client.ts'
 
 describe('API 클라이언트', () => {
     it('200 → 본문 JSON을 돌려줌', async () => {
@@ -72,5 +72,14 @@ describe('API 클라이언트', () => {
         const call = request('GET', '/api/stores')
 
         await expect(call).rejects.toMatchObject({ status: 500, code: 'UNKNOWN' })
+    })
+
+    it('네트워크 오류 → ApiError(0, NETWORK)', async () => {
+        server.use(http.get('/api/stores', () => HttpResponse.error()))
+
+        const call = request('GET', '/api/stores')
+
+        await expect(call).rejects.toBeInstanceOf(ApiError)
+        await expect(call).rejects.toMatchObject({ status: 0, code: 'NETWORK' })
     })
 })
