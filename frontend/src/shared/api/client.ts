@@ -21,5 +21,5 @@ export const request = async <T>(method: string, url: string, body?: unknown): P
         throw new ApiError(response.status, errorBody.code);
     }
 
-    return await response.json();
+    return response.status === 204 ? undefined as T : await response.json();
 }
