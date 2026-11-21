@@ -1,4 +1,4 @@
-class ApiError extends Error {
+export class ApiError extends Error {
     public readonly status: number;
     public readonly code: string;
 
@@ -10,11 +10,16 @@ class ApiError extends Error {
 }
 
 export const request = async <T>(method: string, url: string, body?: unknown): Promise<T> => {
-    const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
+    let response: Response;
+    try {
+        response = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+    } catch {
+        throw new ApiError(0, 'NETWORK');
+    }
 
     if (!response.ok) {
         let code = 'UNKNOWN';
