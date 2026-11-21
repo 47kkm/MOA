@@ -63,4 +63,14 @@ describe('API 클라이언트', () => {
 
         await expect(call).resolves.toBeUndefined()
     })
+
+    it('500, 본문이 JSON 아님 → ApiError(500, UNKNOWN)', async () => {
+        server.use(
+            http.get('/api/stores', () => new HttpResponse('oops', { status: 500 })),
+        )
+
+        const call = request('GET', '/api/stores')
+
+        await expect(call).rejects.toMatchObject({ status: 500, code: 'UNKNOWN' })
+    })
 })
