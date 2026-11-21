@@ -1,6 +1,6 @@
 # MOA 프론트 설계
 
-- 시작 2026-11-17 · Claude 초안 · **★ F0-1~5 kei 결정 (2026-11-17, 전부 추천안)**
+- 시작 2026-11-17 · Claude 초안 · **★ F0-1~5 kei 결정 (2026-11-17, 전부 추천안) · F0-8 (2026-11-21, 추천안)**
 - **누가 쓰나 (kei, 2026-11-17):** 0장 코어는 kei (`feat/frontend-core`, 2026-11-18~). 1장부터 화면은 Claude가 kei의 코어 위에 (00_start 일정 재계획)
 - **개발자 문서.** 화면을 어떻게 나누고 서버와 어떻게 주고받는지를 정한다
 - 원본은 따로 있다: 화면·문구·흐름은 기획서(03), API는 설계(04) 각 장의 N.7 HTTP 표
@@ -8,7 +8,7 @@
 
 | 장 | 화면 (03 장 번호와 같음) | 모듈 | 상태 |
 |---|---|---|---|
-| 0 | 공통 | — | ★ 5개 확정 (kei, 2026-11-17). 구현 중 (kei) |
+| 0 | 공통 | — | ★ 6개 확정 (kei, 2026-11-17 · 11-21). 구현 중 (kei) |
 | 1 | 매장 설정 | store | 초안 |
 | 2 | 비용 분류 | category | 초안 |
 | 3 | 매출 | sales | sales API 뒤 |
@@ -53,7 +53,8 @@ frontend/src/
 │  ├─ api/       fetch 감싸기, ApiError
 │  ├─ ui/        Button, Toast, ConfirmDialog, Spinner, LoadingArea, SlidePanel, MonthNav
 │  ├─ input/     MoneyInput, DateInput, TextInput (03 0.4)
-│  └─ format/    금액 · 날짜 · 연월 표기 (03 0.3)
+│  ├─ format/    금액 · 날짜 · 연월 표기 (03 0.3)
+│  └─ store-id/  지금 매장 id: useStoreId(). StoreGate가 넣고 화면은 꺼내기만 (F0-8)
 └─ features/     백엔드 모듈과 같은 이름
    ├─ store/     index.ts · api.ts · queries.ts · types.ts · messages.ts · 화면 · 테스트
    ├─ category/
@@ -73,11 +74,14 @@ frontend/src/
 
 ```
 app ──▶ 각 features의 페이지
+app ──▶ store        매장 목록 (StoreGate, TopBar의 매장 이름)
 expense ──▶ category     비용 분류 버튼 · 필터 (백엔드와 같은 방향)
 expense ──▶ budget       비용 저장 뒤 예산 토스트 (5장 뒤. 백엔드에는 없는 방향. 화면이 둘을 같이 보여 줘서)
 budget  ──▶ category     예산 항목에 고를 상위 (5장)
 모두    ──▶ shared
 ```
+
+- 다른 모듈은 store를 import하지 않는다. `storeId`는 `shared/store-id`의 `useStoreId()`로 받는다 (F0-8)
 
 ### 0.3 주소 (03 0.1)
 
@@ -95,7 +99,7 @@ budget  ──▶ category     예산 항목에 고를 상위 (5장)
 ```
 앱 시작 → GET /api/stores (StoreGate)
  ├ 0개 → 어느 주소든 /start. 메뉴는 보이되 비활성
- └ 1개 → 그 매장의 id를 storeId로 씀. /start로 오면 /settings/store로
+ └ 1개 → 그 매장의 id를 storeId로 씀 (useStoreId()로 화면에 넘김, F0-8). /start로 오면 /settings/store로
 어느 응답이든 404 STORE_NOT_FOUND → 매장 목록 다시 → /start (04 0.6)
 ```
 
@@ -113,6 +117,9 @@ App
  + ToastHost · BlockingSpinner · ConfirmHost   화면 전체에 하나씩
 ```
 
+- 제목 수준: 서비스명 "모아"는 `<h1>` (TopBar), 페이지 제목은 `<h2>` → **확정 (kei, 2026-11-21)**. 테스트는 제목을 수준이 아니라 이름으로 찾는다
+- 설정 아래 메뉴 2개는 늘 펼쳐 둔다 (03 0.2 그림의 "▾" 접기는 두지 않음)
+
 ### 0.5 서버와 주고받기
 
 ```
@@ -123,6 +130,11 @@ App
  → /api/...                     개발 중에는 Vite proxy → localhost:8080 (CORS 설정 없이)
 ```
 
+- `request<T>(method, path, body?)` → **확정 (kei, 2026-11-21)**
+  - 2xx → 본문 JSON. 204는 값 없음
+  - 2xx 아님 → `ApiError(status, code)`. 본문이 JSON이 아니면 code는 `UNKNOWN`
+  - fetch 자체가 실패 (서버에 닿지 못함) → `ApiError(0, NETWORK)`
+  - 개발 중 백엔드가 꺼져 있으면 Vite proxy가 502 · 빈 본문을 돌려준다 → `ApiError(502, UNKNOWN)`
 - 오류 본문은 `{code, message}`. `message`는 개발자용이라 화면에 쓰지 않는다 (04 0.6, D0-5)
 - 금액은 숫자 그대로 주고받는다. 콤마는 표기에서만
 - 날짜는 `YYYY-MM-DD` 문자열 그대로. "오늘"은 브라우저 날짜
@@ -158,8 +170,9 @@ App
 | 404 `STORE_NOT_FOUND` | 0.3 흐름 (`/start`) |
 | 404 `NOT_FOUND` | 그 사이 지워진 것. 저장 실패 공통 + 그 화면 목록 다시 불러오기 |
 | 409 모듈 코드 | 각 장 N.4 표의 문구와 자리 |
-| 500 · 네트워크 | 저장: "저장하지 못했어요" / 조회: "불러오지 못했어요" |
+| 5xx · 네트워크 (`status` 0) | 저장: "저장하지 못했어요" / 조회: "불러오지 못했어요" |
 
+- 5xx: 서버 오류 500과 proxy의 502 (0.5) → **확정 (kei, 2026-11-21)**
 - 문구 표는 모듈마다 `messages.ts` 한 곳. 같은 코드라도 동작마다 문구가 다르다 (예: `CATEGORY_NAME_DUPLICATE`의 추가 · 이동, 04 0.6)
 
 ### 0.8 표기 · 입력 부품 (03 0.3 · 0.4)
@@ -167,7 +180,7 @@ App
 | 부품 | 하는 일 |
 |---|---|
 | `formatMoney` | `1,870,000`. 음수는 "−" + 빨강 |
-| `formatDate` · `formatYearMonth` | `2026-10-18 (토)` · `2026년 10월` |
+| `formatDate` · `formatYearMonth` | `2026-10-18 (일)` · `2026년 10월` |
 | `MoneyInput` | 숫자만, 입력 중 콤마, 붙여넣은 콤마 · 공백 제거, 자리 수 상한 |
 | `DateInput` | 달력 + 키보드 입력. 미래는 비활성, 키보드로 넣으면 안내 |
 | `TextInput` | 글자 수 `n/50`, 상한에서 더 안 들어감. 앞뒤 공백은 보낼 때 제거 |
@@ -198,6 +211,7 @@ App
 | F0-5 | 테스트의 가짜 서버 | **확정 (kei, 2026-11-17)** A: MSW (요청을 가로채 가짜 응답). B: `vi.mock`으로 api 함수를 바꿔치기 | A는 진짜 `client.ts` · 경로 · 본문까지 지나서 "요청 모양"도 검증됨. 백엔드 HTTP 슬라이스 테스트와 같은 자리 |
 | F0-6 | 주소의 매장 | `storeId`를 주소에 넣지 않음 (0.3) | Phase 1은 매장 하나 |
 | F0-7 | 다시 불러오기 범위 | 자기 모듈 키만 (0.5) | 남의 키를 알면 모듈 경계가 무너짐. 화면에 들어갈 때 다시 불러와서 충분 |
+| F0-8 | 화면이 `storeId`를 받는 길 | **확정 (kei, 2026-11-21)** B: `shared/store-id`의 `useStoreId()` (React Context). StoreGate가 값을 넣고 화면은 꺼내기만. A: `features/store`가 `useStoreId()`를 내보내고 각 모듈이 import | 백엔드 D1-5와 같은 모양: 매장 확인은 한 곳(인터셉터 ↔ StoreGate), 다른 모듈은 `storeId`만 받음. A는 모든 모듈이 store에 의존 (백엔드가 피한 모양) |
 
 ---
 
